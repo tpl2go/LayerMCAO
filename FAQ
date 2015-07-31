@@ -1,0 +1,17 @@
+Why didn't I implement lenslet objects
+According to http://stackoverflow.com/questions/2078978/functional-programming-vs-object-oriented-programming,
+programmers advise that if a code base is likely to evolve by addition of features instead of
+of addition of objects, then functional implementation might be better than an object-oriented implementation.
+The reason is because if we want to add a new feature, we would then have to add the function to multiple objects
+that do not inherit from each other. I believe that we have only a few items to model, but may have many effects
+we may want to take into account. So code will evolve by addition of features
+
+Also, objects are useful when they bundle data together with the functions that operate on those data. In the case of
+lenslet objects, there are no functions which I can meaningfully bundle with the object. Functions like generate the
+distorted image requires most of its information from outside the lenslet object.
+
+For these reasons, functional programming is the chosen way to implement the simulation. Classes are still used
+however for their data encapsulation and abstraction capabilities. And instead of maintaining a collection of
+lenslets objects, I maintain two utility functions (index_to_pos and pixel_to_pos) for generating the necessary lenslet
+information from its index number
+
