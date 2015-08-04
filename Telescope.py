@@ -8,6 +8,6 @@ class Telescope(object):
         self.secondary_lens_f = 0.2 # [meters]
         self.Mfactor = self.primary_lens_f/self.secondary_lens_f
         """primary_lens_f/self.secondary_lens_f"""
-        self.field_of_view = 0.02 # [radians]
+        self.field_of_view = 0.00025 # [radians]
         self._field_diaphragm = np.tan(self.field_of_view/2.0)*self.primary_lens_f*2.0 # [meters]
 

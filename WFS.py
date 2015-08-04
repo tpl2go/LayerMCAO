@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 from Atmosphere import *
 from Telescope import Telescope
 import pickle
+import sys
+from PIL import Image
 
 
 class WideFieldSHWFS(object):
@@ -32,18 +34,20 @@ class WideFieldSHWFS(object):
 
         # physical lenslet information
         # For physical sanity check: Don't really need these information for the simulation
-        self.delta = telescope.pupil_diameter/float(num_lenslet)/float(pixels_lenslet)/float(telescope.Mfactor) # [meters]
+        meta_pupil_diameter = telescope.pupil_diameter + telescope.field_of_view * height
+        self.delta = meta_pupil_diameter/float(num_lenslet)/float(pixels_lenslet)/float(telescope.Mfactor) # [meters]
         self.lenslet_size = self.pixels_lenslet * self.delta # [meters]
         self.lenslet_f = self.delta*self.pixels_lenslet/2.0/telescope.Mfactor/np.tan(telescope.field_of_view/2.0) # [meters]
 
         # conjugated lenslet information
-        self.conjugated_delta = telescope.pupil_diameter/float(num_lenslet)/float(pixels_lenslet) # [meters]
+        self.conjugated_delta = meta_pupil_diameter/float(num_lenslet)/float(pixels_lenslet) # [meters]
         self.conjugated_lenslet_size = self.pixels_lenslet*self.conjugated_delta # [meters]
 
         # relevant objects
         self.atmos = atmosphere
         self.tel = telescope
         self.ImgSimulator = ImageSimulator(atmosphere,telescope,self)
+        self.ImgInterpreter = ImageInterpreter(self.ImgSimulator)
 
     def _reconstruct_WF(self, slopes):
         """
@@ -97,116 +101,109 @@ class WideFieldSHWFS(object):
 
         return scrn.phase_screen[y1:y2,x1:x2]
 
-    def display_dmap(self,lenslet_pos):
+    def _get_sensed_screen(self,scrn):
+        size_of_WFS = self.num_lenslet*self.pixels_lenslet*self.conjugated_delta
+        num_scrn_pixels = size_of_WFS/scrn.delta
+        shapeX, shapeY = scrn.phase_screen.shape
+        x1 = int(shapeX/2.0 - num_scrn_pixels/2.0)
 
-        dist_map = self.ImgSimulator.dmap(lenslet_pos)
+        return scrn.phase_screen[x1:x1+num_scrn_pixels,x1:x1+num_scrn_pixels]
 
-        plt.figure(1)
+    def set_size(self,mode = None, **kwargs):
+        """
+        By default, the WFS is set to the size of the meta pupil.
+        Use keyword argument to change the size of the WFS
 
-        ax1 = plt.subplot(121)
-        ax1.set_title("X-Distortion")
-        plt.imshow(dist_map[0])
-        plt.colorbar()
+        Available keywords:
+        cpixelsize, pixelsize,clensletsize,lensletsize,cwfssize
+        """
+        if mode == None:
+            if len(kwargs) > 1:
+                raise ValueError("Context: Resizing WFS\n" +
+                                 "Problem: Too many arguments\n" +
+                                 "Solution: Provide a single argument specifying size")
+            elif len(kwargs) < 1:
+                raise ValueError("Context: Resizing WFS\n" +
+                                 "Problem: Too little arguments\n" +
+                                 "Solution: Provide a single argument specifying size")
 
-        ax2 = plt.subplot(122)
-        ax2.set_title("Y-Distortion")
-        plt.imshow(dist_map[1])
-        plt.colorbar()
+            key, value = kwargs.items[0]
 
-        plt.show()
+            if key == "cpixelsize":
+                # physical lenslet information
+                # For physical sanity check: Don't really need these information for the simulation
+                self.delta = kwargs[key]/self.tel.Mfactor # [meters]
+                self.lenslet_size = self.pixels_lenslet * self.delta # [meters]
+                self.lenslet_f = self.delta*self.pixels_lenslet/2.0/self.tel.Mfactor/np.tan(self.tel.field_of_view/2.0) # [meters]
 
-    def display_dimg(self,c_lenslet_pos):
+                # conjugated lenslet information
+                self.conjugated_delta = kwargs[key] # [meters]
+                self.conjugated_lenslet_size = self.pixels_lenslet*self.conjugated_delta # [meters]
+            elif key =="pixelsize":
+                # physical lenslet information
+                # For physical sanity check: Don't really need these information for the simulation
+                self.delta = kwargs[key] # [meters]
+                self.lenslet_size = self.pixels_lenslet * self.delta # [meters]
+                self.lenslet_f = self.delta*self.pixels_lenslet/2.0/self.tel.Mfactor/np.tan(self.tel.field_of_view/2.0) # [meters]
 
-        cropped_lena = self.ImgSimulator.get_test_img()
-        oimg = self.ImgSimulator.dimg(c_lenslet_pos)
+                # conjugated lenslet information
+                self.conjugated_delta = kwargs[key] * self.tel.Mfactor # [meters]
+                self.conjugated_lenslet_size = self.pixels_lenslet*self.conjugated_delta # [meters]
+            elif key == "clensletsize":
+                # physical lenslet information
+                # For physical sanity check: Don't really need these information for the simulation
+                self.lenslet_size = kwargs[key] / self.tel.Mfactor # [meters]
+                self.delta = float(self.lenslet_size) / self.pixels_lenslet # [meters]
+                self.lenslet_f = self.delta*self.pixels_lenslet/2.0/self.tel.Mfactor/np.tan(self.tel.field_of_view/2.0) # [meters]
 
-        plt.figure(1)
+                # conjugated lenslet information
+                self.conjugated_lenslet_size = kwargs[key] # [meters]
+                self.conjugated_delta =  self.conjugated_lenslet_size / self.pixels_lenslet # [meters]
+            elif key == "lensletsize":
+                # physical lenslet information
+                # For physical sanity check: Don't really need these information for the simulation
+                self.lenslet_size = kwargs[key] # [meters]
+                self.delta = float(self.lenslet_size) / self.pixels_lenslet # [meters]
+                self.lenslet_f = self.delta*self.pixels_lenslet/2.0/self.tel.Mfactor/np.tan(self.tel.field_of_view/2.0) # [meters]
 
-        ax1 = plt.subplot(121)
-        ax1.set_title("True Image")
-        plt.imshow(cropped_lena,cmap=plt.cm.gray)
+                # conjugated lenslet information
+                self.conjugated_lenslet_size = kwargs[key] * self.tel.Mfactor # [meters]
+                self.conjugated_delta =  self.conjugated_lenslet_size / self.pixels_lenslet # [meters]
+            elif key == "cwfssize":
+                # physical lenslet information
+                # For physical sanity check: Don't really need these information for the simulation
+                self.lenslet_size = float(kwargs[key]) / self.num_lenslet / self.tel.Mfactor # [meters]
+                self.delta = float(self.lenslet_size) / self.pixels_lenslet # [meters]
+                self.lenslet_f = self.delta*self.pixels_lenslet/2.0/self.tel.Mfactor/np.tan(self.tel.field_of_view/2.0) # [meters]
 
-        ax2 = plt.subplot(122)
-        ax2.set_title("Distorted Image")
-        plt.imshow(oimg,cmap=plt.cm.gray)
+                # conjugated lenslet information
+                self.conjugated_lenslet_size = float(kwargs[key]) / self.num_lenslet # [meters]
+                self.conjugated_delta =  self.conjugated_lenslet_size / self.pixels_lenslet # [meters]
+            else:
+                raise ValueError("Context: Resizing WFS\n" +
+                                 "Problem: Key not understood\n" +
+                                 "Solution: Use either cpixelsize,pixelsize,clensletsize,lensletsize,cwfssize")
+        elif mode == 'pupil':
+            # physical lenslet information
+            # For physical sanity check: Don't really need these information for the simulation
+            self.delta = self.tel.pupil_diameter/float(self.num_lenslet)/float(self.pixels_lenslet)/float(self.tel.Mfactor) # [meters]
+            self.lenslet_size = self.pixels_lenslet * self.delta # [meters]
+            self.lenslet_f = self.delta*self.pixels_lenslet/2.0/self.tel.Mfactor/np.tan(self.tel.field_of_view/2.0) # [meters]
 
-        plt.show()
+            # conjugated lenslet information
+            self.conjugated_delta = self.tel.pupil_diameter/float(self.num_lenslet)/float(self.pixels_lenslet) # [meters]
+            self.conjugated_lenslet_size = self.pixels_lenslet*self.conjugated_delta # [meters]
+        elif mode == 'metapupil':
+            # physical lenslet information
+            # For physical sanity check: Don't really need these information for the simulation
+            meta_pupil_diameter = self.tel.pupil_diameter + self.tel.field_of_view * self.conjugated_height
+            self.delta = meta_pupil_diameter/float(self.num_lenslet)/float(self.pixels_lenslet)/float(self.telescope.Mfactor) # [meters]
+            self.lenslet_size = self.pixels_lenslet * self.delta # [meters]
+            self.lenslet_f = self.delta*self.pixels_lenslet/2.0/self.tel.Mfactor/np.tan(self.tel.field_of_view/2.0) # [meters]
 
-    def display_all_dmap(self, axis=0):
-        # sanity check
-        if axis != 0 and axis != 1:
-            raise ValueError("\nContext: Displaying all distortion maps\n" +
-                             "Problem: Choice of axes (x,y) invalid\n" +
-                             "Solution: Input 'axis' argument should be 0 (x-axis) or 1 (y-axis)")
-
-        all_dmaps = self.ImgSimulator.all_dmap()
-
-        # Display process
-        plt.figure(1)
-        for i in range(self.num_lenslet):
-            for j in range(self.num_lenslet):
-                plt.subplot(self.num_lenslet,self.num_lenslet,i*self.num_lenslet+j+1)
-                plt.axis('off')
-                plt.imshow(all_dmaps[j][i][axis])
-
-        plt.show()
-
-    def display_all_dimg(self):
-        all_dimg = self.ImgSimulator.all_dimg()
-
-        # Display process
-        plt.figure(1)
-        # Iterate over lenslet index
-        for i in range(self.num_lenslet):
-            for j in range(self.num_lenslet):
-                plt.subplot(self.num_lenslet,self.num_lenslet,i*self.num_lenslet+j+1)
-                plt.axis('off')
-                plt.imshow(all_dimg[j][i],cmap=plt.cm.gray,vmax=256,vmin=0)
-
-        plt.show()
-
-    def display_comparison(self):
-        distmap_all = self.ImgSimulator._all_dmap()
-        slopes = self._sense_slopes(distmap_all)
-        sensed = self._reconstruct_WF(slopes)
-        screen = self._get_metascreen(self.atmos.scrns[0])
-
-        plt.figure(1)
-        plt.subplot(121)
-        plt.imshow(screen)
-        plt.colorbar()
-        plt.subplot(122)
-        plt.imshow(sensed)
-        plt.colorbar()
-        # plt.axis('off')
-        plt.show()
-
-    def display_slopes(self):
-        screen = self._get_metascreen(self.atmos.scrns[0])
-        distmap_all = self._all_dmap()
-        slopes = self._sense_slopes(distmap_all)
-        plt.figure(1)
-        plt.subplot(131)
-        plt.imshow(screen)
-        plt.subplot(132)
-        plt.imshow(slopes[0])
-        plt.colorbar()
-        plt.subplot(133)
-        plt.imshow(slopes[1])
-        plt.colorbar()
-        # plt.axis('off')
-        plt.show()
-
-    def display_angles(self):
-        x = []
-        y = []
-        for j in range(self.pixels_lenslet):
-            for i in range(self.pixels_lenslet):
-                angle = self._pixel_to_angle(i,j)
-                x.append(angle[0])
-                y.append(angle[1])
-        plt.scatter(x,y)
-        plt.show()
+            # conjugated lenslet information
+            self.conjugated_delta = meta_pupil_diameter/float(self.num_lenslet)/float(self.pixels_lenslet) # [meters]
+            self.conjugated_lenslet_size = self.pixels_lenslet*self.conjugated_delta # [meters]
 
     def runWFS(self):
         """
@@ -234,6 +231,14 @@ class ImageSimulator(object):
         self.tel = telescope
         self.wfs = SH_WFS
 
+        # get test image of solar granule
+        # # self.test_img = np.loadtxt(open('SunTesImage','rb'))
+        # IM = Image.open('SunGranule2.jpg','r')
+        # # figure out size of true image
+        # truth_size = int(self.wfs.pixels_lenslet * (60.0/3600*np.pi/180) / self.tel.field_of_view)
+        # IM = IM.resize((truth_size,truth_size),Image.BICUBIC)
+        # self.test_img = np.array(IM)
+        # self.test_img = self.test_img[:,:,0]
         self.test_img = lena()
 
     def _get_lensletscreen(self,scrn, angle,c_lenslet_pos):
@@ -275,7 +280,7 @@ class ImageSimulator(object):
         assert y2 < scrn.phase_screen.shape[1]
 
         # grab a snapshot the size of a lenslet
-        output = scrn.phase_screen[x1:x2,y1:y2]
+        output = scrn.phase_screen[y1:y2,x1:x2]
 
         return np.copy(output)
 
@@ -479,19 +484,28 @@ class ImageSimulator(object):
 
     def save_dimg(self, c_lenslet_pos):
         """
-        a wrapper that saves the dimg
+        A wrapper of ImageSimulator.dimg function that saves the dimg output
         :param c_lenslet_pos:
         :return:
         """
         dimg = self.dimg(c_lenslet_pos)
-        f = open("TestDimg"+".dimg",'wb')
+        filename = "TestDimg" + str(c_lenslet_pos) + "_"  + self.hash_function() + ".dimg"
+        f = open(filename,'wb')
         pickle.dump(dimg,f,pickle.HIGHEST_PROTOCOL)
+        print "A dimg has been saved: " + filename
         return dimg
 
     def save_all_dimg(self):
+        """
+        A wrapper of ImageSimulator.all_dimg that saves the all_dimg output
+        :return:
+        """
         all_dimg = self.all_dimg()
-        f = open("TestAllDimg"+".dimg",'wb')
+        filename = "TestAllDimg" + self.hash_function() + ".dimg"
+        f = open(filename,'wb')
         pickle.dump(all_dimg,f,pickle.HIGHEST_PROTOCOL)
+
+        print "An all_dimg has been saved: " + filename
         return all_dimg
 
     def all_dmap(self):
@@ -500,17 +514,17 @@ class ImageSimulator(object):
         :return: x-shifts y-shifts # [meters ndarray]
         """
         # Initialize output array
-        output = np.empty(self.wfs.num_lenslet,np.ndarray)
+        output = np.empty((self.wfs.num_lenslet,self.wfs.num_lenslet),np.ndarray)
 
         # Iterate over lenslet index
         for j in range(self.wfs.num_lenslet):
-            line = np.empty(self.wfs.num_lenslet,np.ndarray)
             for i in range(self.wfs.num_lenslet):
-                print (i,j)
+                sys.stdout.write('\r' + "Now computing dmap index " + str((i,j)))
                 c_lenslet_pos = self._index_to_c_pos(i,j)
                 distortion = self.dmap(c_lenslet_pos)
-                line[i] = distortion
-            output[j] = line
+                output[j,i] = distortion
+
+        sys.stdout.write(" Done!")
 
         return output
 
@@ -546,31 +560,8 @@ class ImageSimulator(object):
 
         return cropped_img
 
-    def display_vignette(self, c_lenslet_pos):
-        """
-        Demonstrates the vigenetting effect for a single lenslet
-        :param c_lenslet_pos: 
-        :return:
-        """
-
-        img = self._get_vignette_mask(c_lenslet_pos)
-        
-        plt.imshow(img,cmap=plt.cm.gray)
-        plt.colorbar()
-        plt.show()
-    
-    def display_all_vignette(self):
-        plt.figure(1)
-        for j in range(self.wfs.num_lenslet):
-            for i in range(self.wfs.num_lenslet):
-                c_lenslet_pos = self._index_to_c_pos(i,j)
-                img = self._get_vignette_mask(c_lenslet_pos)
-                plt.subplot(self.wfs.num_lenslet,self.wfs.num_lenslet,i+j*self.wfs.num_lenslet + 1)
-                plt.axis('off')
-                plt.imshow(img, cmap=plt.cm.gray, vmin = 0, vmax=1)
-        plt.show()
-
-    def _stupid_hash_function(self):
+    def hash_function(self):
+        # Pretty stupid hash but it works for my naming purposes
         hash = str(self.wfs.conjugated_height) + str(self.wfs.num_lenslet) + str(self.wfs.pixels_lenslet)
         for scrn in self.atmos.scrns:
             hash = hash + str(scrn.height) + str(scrn.ID)
@@ -581,6 +572,12 @@ class ImageInterpreter(object):
     ImageInterpreter takes the subimages produced behind the SH lenslets and tries to extract the slope
     information above each lenslet.
     """
+
+    def __init__(self, ImgSimulator):
+        self.ImgSimulator = ImgSimulator
+        # this class is a downstream user of the dimg products
+        # if there is any problems the user can contact the manufacturer of the dimg products
+
     def _dmap_to_slope(self,distortion_map):
         """
         Assumption: There is a common shift component to all pixels of a distortion map
@@ -606,13 +603,14 @@ class ImageInterpreter(object):
 
         for (j,line) in enumerate(d_map_array):
             for (i,dmap) in enumerate(line):
-                (x,y) = ImageInterpreter._dmap_to_slope(dmap)
+                (x,y) = self._dmap_to_slope(dmap)
                 slopes[0,j,i] = x
                 slopes[1,j,i] = y
 
         return slopes
 
     def all_dimg_to_slopes(self,all_dimg):
+        #TODO
         # find reference image
         mid = all_dimg.shape[0]/2
         imgRef = all_dimg[mid,mid]
@@ -636,7 +634,7 @@ class ImageInterpreter(object):
 
         for j in range(c_matrix.shape[0]):
             for i in range(c_matrix.shape[0]):
-                c_matrix[j,i] = _SquaredDifferenceFunction(img,imgRef,i-bias,j-bias)
+                c_matrix[j,i] = self._SquaredDifferenceFunction(img,imgRef,i-bias,j-bias)
 
         return c_matrix
 
@@ -689,6 +687,11 @@ class ImageInterpreter(object):
         return (x_min,y_min)
 
     def spatialAverage(self,all_dimg):
+        """
+        Reconstruct truth image
+        :param all_dimg:
+        :return:
+        """
         ave = np.zeros(all_dimg[0,0].shape)
         for j in range(all_dimg.shape[0]):
             for i in range(all_dimg.shape[1]):
@@ -699,13 +702,266 @@ class ImageInterpreter(object):
 
     def compare_refImg(self,dimg, recon_dimg):
         plt.figure(1)
-        plt.subplot(2,1,1)
-        plt.imshow(dimg)
-        plt.subplot(2,1,2)
-        plt.imshow(recon_dimg)
+
+        ax1 = plt.subplot(1,3,1)
+        ax1.imshow(dimg)
+        ax1.set_title("dimg")
+
+        ax2 = plt.subplot(1,3,2)
+        ax2.imshow(recon_dimg)
+        ax2.set_title("recon_dimg")
+
+        ax3 = plt.subplot(1,3,3)
+        true_img = self.ImgSimulator.get_test_img()
+        ax3.imshow(true_img)
+        ax3.set_title("true_img")
+
         plt.show()
 
+class SHWFS_Demonstrator(object):
+    """
+    A static class containing methods to test, debug and demonstrate
+    the operations of the wide field extended source SH WFS
+    
+    Example Usage:
+     tel = Telescope(2.5)
+     
+     at = Atmosphere()
+     
+     at.create_default_screen(100,0)
+     
+     wfs = WideFieldSHWFS(100,16,32,at,tel)
+     
+     SHWFS_Demonstrator.display_comparison(wfs)
+     
+     SHWFS_Demonstrator.compare_dmaps(wfs)
+    """
+    @staticmethod
+    def display_dmap(wfs,lenslet_pos):
+        """
+        Inspect the dmap that would have been produced by a lenslet at particular conjugated position
 
+        Science:
+         1) Observe a particular dmap
+        :param wfs:
+        :param lenslet_pos:
+        :return:
+        """
+
+        dist_map = wfs.ImgSimulator.dmap(lenslet_pos)
+
+        plt.figure(1)
+
+        ax1 = plt.subplot(121)
+        ax1.set_title("X-Distortion")
+        plt.imshow(dist_map[0])
+        plt.colorbar()
+
+        ax2 = plt.subplot(122)
+        ax2.set_title("Y-Distortion")
+        plt.imshow(dist_map[1])
+        plt.colorbar()
+
+        plt.show()
+    @staticmethod
+    def display_dimg(wfs,c_lenslet_pos):
+        """
+        Inspect the dimg that would have been produced by a lenslet at particular conjugated position
+
+        Science:
+         1) Observe a particular dimg
+        :param wfs:
+        :param c_lenslet_pos:
+        :return:
+        """
+
+        cropped_lena = wfs.ImgSimulator.get_test_img()
+        oimg = wfs.ImgSimulator.dimg(c_lenslet_pos)
+
+        plt.figure(1)
+
+        ax1 = plt.subplot(121)
+        ax1.set_title("True Image")
+        plt.imshow(cropped_lena,cmap=plt.cm.gray)
+
+        ax2 = plt.subplot(122)
+        ax2.set_title("Distorted Image")
+        plt.imshow(oimg,cmap=plt.cm.gray)
+
+        plt.show()
+    @staticmethod
+    def display_all_dmap(wfs, axis=0):
+        """
+        Inspect the dmaps used by wfs.ImgSimulator to generate the dimgs
+
+        Science:
+         1) Observe variation in distortion maps with lenslet positions
+        :param wfs:
+        :param axis:
+        :return:
+        """
+        # sanity check
+        if axis != 0 and axis != 1:
+            raise ValueError("\nContext: Displaying all distortion maps\n" +
+                             "Problem: Choice of axes (x,y) invalid\n" +
+                             "Solution: Input 'axis' argument should be 0 (x-axis) or 1 (y-axis)")
+
+        all_dmaps = wfs.ImgSimulator.all_dmap()
+
+        # Display process
+        fig = plt.figure(1)
+        for i in range(wfs.num_lenslet):
+            for j in range(wfs.num_lenslet):
+                plt.subplot(wfs.num_lenslet,wfs.num_lenslet,i*wfs.num_lenslet+j+1)
+                plt.axis('off')
+                im = plt.imshow(all_dmaps[j][i][axis], vmin = -0.1, vmax = 0.1)
+        fig.subplots_adjust(right=0.8)
+        cbar_ax = fig.add_axes([0.85, 0.15, 0.03, 0.7])
+        fig.colorbar(im, cax=cbar_ax)
+        plt.show()
+    @staticmethod
+    def display_all_dimg(wfs):
+        """
+        Inspect subimages produced on SH WHF's detector plane
+
+        Science:
+         1) Observe vignetting effect
+         2) Observe variation in distortions
+        :param wfs:
+        :return:
+        """
+        all_dimg = wfs.ImgSimulator.all_dimg()
+
+        # Display process
+        plt.figure(1)
+        # Iterate over lenslet index
+        for i in range(wfs.num_lenslet):
+            for j in range(wfs.num_lenslet):
+                plt.subplot(wfs.num_lenslet,wfs.num_lenslet,i*wfs.num_lenslet+j+1)
+                plt.axis('off')
+                plt.imshow(all_dimg[j][i],cmap=plt.cm.gray,vmax=256,vmin=0)
+
+        plt.show()
+    @staticmethod
+    def display_comparison(wfs): ### TODO: fix broken methods
+        all_dmap = wfs.ImgSimulator.all_dmap()
+        slopes = wfs.ImgInterpreter.all_dmap_to_slopes(all_dmap)
+        screen = wfs._get_metascreen(wfs.atmos.scrns[0])
+        sensed = wfs._reconstruct_WF(slopes)
+
+        plt.figure(1)
+
+        ax1 = plt.subplot(131)
+        ax1.set_title("True phase scrn")
+        im1 = ax1.imshow(screen)
+        plt.colorbar(im1)
+
+        ax2 = plt.subplot(132)
+        ax2.set_title("Immediate")
+        im2 = ax2.imshow(SHWFS_Demonstrator.immediatecutslopeNrecon(screen))
+        plt.colorbar(im2)
+
+        ax3 = plt.subplot(133)
+        ax3.set_title("Reconstructed")
+        im3 = ax3.imshow(sensed)
+        plt.colorbar(im3)
+
+        plt.show()
+    @staticmethod
+    def compare_dmaps(wfs):
+        all_dmaps = wfs.ImgSimulator.all_dmap()
+
+        # Display process
+        fig1 = plt.figure(1)
+        for j in range(wfs.num_lenslet):
+            for i in range(wfs.num_lenslet):
+                plt.subplot(wfs.num_lenslet,wfs.num_lenslet,j*wfs.num_lenslet+i+1)
+                plt.axis('off')
+                im = plt.imshow(all_dmaps[j][i][0], vmin = -0.1, vmax = 0.1)
+
+        fig2 = plt.figure(2)
+        sc = wfs._get_metascreen(wfs.atmos.scrns[0])
+        num = sc.shape[0]/16
+        im = np.zeros((wfs.num_lenslet,wfs.num_lenslet))
+        for j in range(wfs.num_lenslet):
+            for i in range(wfs.num_lenslet):
+                x,y = wfs.ImgSimulator._screen_to_shifts(sc[j*num:(j+1)*num,i*num:(i+1)*num])
+                im[j,i] = x
+        plt.imshow(im,interpolation='none')
+        plt.show()
+    @staticmethod
+    def display_slopes(wfs):
+        screen = wfs._get_metascreen(wfs.atmos.scrns[0])
+        distmap_all = wfs._all_dmap()
+        slopes = wfs._sense_slopes(distmap_all)
+        plt.figure(1)
+        plt.subplot(131)
+        plt.imshow(screen)
+        plt.subplot(132)
+        plt.imshow(slopes[0])
+        plt.colorbar()
+        plt.subplot(133)
+        plt.imshow(slopes[1])
+        plt.colorbar()
+        # plt.axis('off')
+        plt.show()
+    @staticmethod
+    def display_angles(wfs):
+        x = []
+        y = []
+        for j in range(wfs.pixels_lenslet):
+            for i in range(wfs.pixels_lenslet):
+                angle = wfs._pixel_to_angle(i,j)
+                x.append(angle[0])
+                y.append(angle[1])
+        plt.scatter(x,y)
+        plt.show()
+    @staticmethod
+    def display_vignette(wfs, c_lenslet_pos):
+        """
+        Demonstrates the vigenetting effect for a single lenslet
+        :param c_lenslet_pos:
+        :return:
+        """
+
+        img = wfs.ImgSimulator._get_vignette_mask(c_lenslet_pos)
+
+        plt.imshow(img,cmap=plt.cm.gray)
+        plt.colorbar()
+        plt.show()
+    @staticmethod
+    def display_all_vignette(wfs):
+        plt.figure(1)
+        for j in range(wfs.num_lenslet):
+            for i in range(wfs.num_lenslet):
+                c_lenslet_pos = wfs.ImgSimulator._index_to_c_pos(i,j)
+                img = wfs.ImgSimulator._get_vignette_mask(c_lenslet_pos)
+                plt.subplot(wfs.num_lenslet,wfs.num_lenslet,i+j*wfs.num_lenslet + 1)
+                plt.axis('off')
+                plt.imshow(img, cmap=plt.cm.gray, vmin = 0, vmax=1)
+        plt.show()
+    @staticmethod
+    def immediatecutslopeNrecon(phasescreen, N=16):
+        num = phasescreen.shape[0]/N
+        slopes = np.empty((2,N,N))
+        for j in range(N):
+            for i in range(N):
+                oXSlope,oYSlope = SlopifyMethods.slopify1(phasescreen[j*num:(j+1)*num,i*num:(i+1)*num])
+                slopes[0,j,i] = oXSlope
+                slopes[1,j,i] = oYSlope
+
+        return ReconMethods.LeastSquare(slopes[0],slopes[1])
+
+    @staticmethod
+    def immediate(phasescreen, N=16):
+        num = phasescreen.shape[0]/N
+        slopes = np.empty((2,N,N))
+        for j in range(N):
+            for i in range(N):
+                oXSlope,oYSlope = SlopifyMethods.slopify1(phasescreen[j*num:(j+1)*num,i*num:(i+1)*num])
+                slopes[0,j,i] = oXSlope
+                slopes[1,j,i] = oYSlope
+        return slopes
 
 class SlopifyMethods(object):
     @staticmethod
@@ -767,12 +1023,7 @@ class SlopifyMethods(object):
 if __name__ == '__main__':
     tel = Telescope(2.5)
     at = Atmosphere()
-    at.create_default_screen(0,200)
-    wfs = WideFieldSHWFS(100,16,32,at,tel)
-    # wfs.ImgSimulator.save_all_dimg()
-    # wfs.ImgSimulator.save_dimg((0,0))
-    da = pickle.load(open("TestAllDimg.dimg",'rb'))
-    dd = pickle.load(open("TestDimg.dimg",'rb'))
-    ave = ImageInterpreter.spatialAverage(da)
-    ImageInterpreter.compare_refImg(dd,ave)
-    # wfs.display_all_dimg()
+    at.create_default_screen(100,2)
+    wfs = WideFieldSHWFS(0,16,32,at,tel)
+    SHWFS_Demonstrator.display_comparison(wfs)
+    # SHWFS_Demonstrator.compare_dmaps(wfs)

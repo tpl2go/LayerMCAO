@@ -1,5 +1,6 @@
 __author__ = 'tpl'
 import pickle
+import os
 
 import matplotlib.pyplot as plt
 
@@ -29,11 +30,12 @@ class Atmosphere(object):
         sorted(self.scrns, key=lambda screen: screen.height)
 
     def add_screen(self,scrn):
+        assert isinstance(scrn,Screen)
         self.scrns.append(scrn)
         sorted(self.scrns, key=lambda screen: screen.height)
 
-    def create_default_screen(self, screen_id, height):
-        scrn = Screen.create_default_screen(screen_id, height)
+    def create_default_screen(self, height, screen_id):
+        scrn = Screen.create_default_screen(height, screen_id)
         self.scrns.append(scrn)
         sorted(self.scrns, key=lambda screen: screen.height)
 
@@ -45,7 +47,7 @@ class Atmosphere(object):
         :return:
         """
         for i in range(N):
-            self.create_default_screen(i,height_list[i])
+            self.create_default_screen(height_list[i],i)
 
     def display_screen(self,n):
         """
@@ -59,6 +61,9 @@ class Atmosphere(object):
 class Screen(object):
     def __init__(self,r_0,N,delta,L_0,l_0, height=0, screen_id=0):
         """
+        Usage:
+         1) get phase screen: scrn.phase_screen
+         2) get height of screen: scrn.height
         :param r_0: Fried Parameter [meters]
         :param N: Size of phase screen array [pixels]
         :param delta: Size of each phase screen pixel [meters]
@@ -68,11 +73,6 @@ class Screen(object):
         :param ID: ID number of the
         :return: Screen object [Screen]
 
-        Usage:
-        1) get phase screen
-            scrn.phase_screen
-        2) get height of screen
-            scrn.height
         """
         # save the details of the phase screen
         self.r_0 = r_0
@@ -96,10 +96,19 @@ class Screen(object):
         :param screen_id: id of default screen to be added [int]
         :return: screen object [Screen]
         """
+
+        # Create folder to contain collection of Screen objects
         try:
-            f = open("DafaultScreen"+str(height)+"_"+str(screen_id)+".scrn",'rb')
+            os.makedirs("ScrnLib")
+        except:
+            pass
+
+        path = os.getcwd() + "/ScrnLib/" + "DafaultScreen"+str(height)+"_"+str(screen_id)+".scrn"
+
+        try:
+            f = open(path,'rb')
             screen = pickle.load(f)
-            assert screen.isinstance(Screen)
+            assert isinstance(screen, Screen)
             print "Found a previously computed default screen"
             return screen
         except IOError:
@@ -115,14 +124,13 @@ class Screen(object):
             new_screen = Screen(r_0,N,delta,L_0,l_0,height, screen_id)
 
             # Saving
-            f = open("DafaultScreen"+str(height)+"_"+str(screen_id)+".scrn",'wb')
+            f = open(path,'wb')
             pickle.dump(new_screen,f,pickle.HIGHEST_PROTOCOL)
 
             return new_screen
 
 # TODO: input algorithms to create phase screens here in a class
 
-# #Test Atmosphere
-#
-# at = Atmosphere ()
-# at.create_default_screen(0,0)
+if __name__ == "__main__":
+    at = Atmosphere()
+    at.create_default_screen(0,0)

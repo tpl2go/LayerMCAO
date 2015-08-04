@@ -1,17 +1,31 @@
-Why didn't I implement lenslet objects
+Why did you choose a functional style of programming over an object-oriented approach?
 According to http://stackoverflow.com/questions/2078978/functional-programming-vs-object-oriented-programming,
-programmers advise that if a code base is likely to evolve by addition of features instead of
-of addition of objects, then functional implementation might be better than an object-oriented implementation.
-The reason is because if we want to add a new feature, we would then have to add the function to multiple objects
-that do not inherit from each other. I believe that we have only a few items to model, but may have many effects
-we may want to take into account. So code will evolve by addition of features
+programmers are advised that if a code base is likely to evolve by addition of features instead of
+of objects, then a functional implementation might be better than an object-oriented implementation.
+The reason is that if we want to add a new feature to an OOP implementation, we will have to add it to many
+objects. This problem is usually solved in OOP by inheritance but in my case most objects do not inherit from each
+other. LayerAO only has a few items to model, but may have many physical and geometric effects to take into account.
+The code will likely evolve by addition of features.
 
-Also, objects are useful when they bundle data together with the functions that operate on those data. In the case of
-lenslet objects, there are no functions which I can meaningfully bundle with the object. Functions like generate the
-distorted image requires most of its information from outside the lenslet object.
+Still, I do implement objects and classes to exploit OOP's encapsulation and modularity features. But as much as
+I can, within the simulation codes I try to program in a functional way.
 
-For these reasons, functional programming is the chosen way to implement the simulation. Classes are still used
-however for their data encapsulation and abstraction capabilities. And instead of maintaining a collection of
-lenslets objects, I maintain two utility functions (index_to_pos and pixel_to_pos) for generating the necessary lenslet
-information from its index number
+Why didn't you implement lenslet objects?
+Objects are useful when they bundle data together with the functions that operate on those data. In the case of
+lenslet objects, there are no functions which I can meaningfully bundle with them. Functions that generate the
+distorted image require most of its information from outside the lenslet object. So at the most a lenslet object will
+be a bundle of data
+
+For the same reason why I prefer functional programming over OOP, I choose to maintain two generator functions
+(index_to_pos and pixel_to_pos) of lenslets/pixel positions instead of maintaining a collection of lenslets objects.
+
+Why did you implement a ScrnLib folder?
+The purpose of these python scripts is to test and develop methods in Adaptive Optics. To do so I need a consistent
+set of data to work from. Only with a consistent set of data can I effectively evaluate different methods. I know
+that Andrew's pyaos code does not save phase screen by default. That's because his code wants to test a AO system
+configuration under various atomospheric conditions. Until the time we want to test the effect of atmospheric conditions
+/ phase screen statistics, I will draw on standard phase screens in ScrnLib for testing.
+
+
+
 
