@@ -3,17 +3,17 @@ __author__ = 'tpl'
 from Telescope import Telescope
 from Atmosphere import Atmosphere
 from WFS import WideFieldSHWFS, SHWFS_Demonstrator
-import  matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 def dimg_vs_height(c_pos):
     tel = Telescope(2.5)
     at = Atmosphere()
     at.create_default_screen(2000,0)
-    wfs0 = WideFieldSHWFS(0,16,32,at,tel)
-    wfs1 = WideFieldSHWFS(1000,16,32,at,tel)
-    wfs2 = WideFieldSHWFS(2000,16,32,at,tel)
-    wfs3 = WideFieldSHWFS(3000,16,32,at,tel)
-    wfs4 = WideFieldSHWFS(4000,16,32,at,tel)
+    wfs0 = WideFieldSHWFS(0,16,128,at,tel)
+    wfs1 = WideFieldSHWFS(1000,16,128,at,tel)
+    wfs2 = WideFieldSHWFS(2000,16,128,at,tel)
+    wfs3 = WideFieldSHWFS(3000,16,128,at,tel)
+    wfs4 = WideFieldSHWFS(4000,16,128,at,tel)
 
     plt.figure(1)
 
@@ -52,12 +52,12 @@ def dmap_vs_height(c_pos, axis=0):
     tel = Telescope(2.5)
     at = Atmosphere()
     at.create_default_screen(2000,0)
-    wfs0 = WideFieldSHWFS(0,16,32,at,tel)
-    wfs1 = WideFieldSHWFS(1000,16,32,at,tel)
-    wfs2 = WideFieldSHWFS(2000,16,32,at,tel)
-    wfs3 = WideFieldSHWFS(3000,16,32,at,tel)
-    wfs4 = WideFieldSHWFS(4000,16,32,at,tel)
-    wfs5 = WideFieldSHWFS(5000,16,32,at,tel)
+    wfs0 = WideFieldSHWFS(0,16,128,at,tel)
+    wfs1 = WideFieldSHWFS(1000,16,128,at,tel)
+    wfs2 = WideFieldSHWFS(2000,16,128,at,tel)
+    wfs3 = WideFieldSHWFS(3000,16,128,at,tel)
+    wfs4 = WideFieldSHWFS(4000,16,128,at,tel)
+    wfs5 = WideFieldSHWFS(5000,16,128,at,tel)
 
     fig = plt.figure(1)
     fig.suptitle("Variation of dmap with conjugated height")
@@ -105,28 +105,28 @@ def vignette_vs_height():
     tel = Telescope(2.5)
     at = Atmosphere()
     at.create_default_screen(2000,0)
-    wfs0 = WideFieldSHWFS(0,16,32,at,tel)
-    wfs1 = WideFieldSHWFS(1000,16,32,at,tel)
-    wfs2 = WideFieldSHWFS(2000,16,32,at,tel)
-    wfs3 = WideFieldSHWFS(3000,16,32,at,tel)
-    wfs4 = WideFieldSHWFS(4000,16,32,at,tel)
+    # wfs0 = WideFieldSHWFS(0,16,128,at,tel)
+    # wfs1 = WideFieldSHWFS(1000,16,128,at,tel)
+    # wfs2 = WideFieldSHWFS(2000,16,128,at,tel)
+    # wfs3 = WideFieldSHWFS(3000,16,128,at,tel)
+    wfs4 = WideFieldSHWFS(8000,16,128,at,tel)
 
     #TODO: figure out how to make a sub sub plot?
-    SHWFS_Demonstrator.display_all_vignette(wfs0)
-    SHWFS_Demonstrator.display_all_vignette(wfs1)
-    SHWFS_Demonstrator.display_all_vignette(wfs2)
-    SHWFS_Demonstrator.display_all_vignette(wfs3)
+    # SHWFS_Demonstrator.display_all_vignette(wfs0)
+    # SHWFS_Demonstrator.display_all_vignette(wfs1)
+    # SHWFS_Demonstrator.display_all_vignette(wfs2)
+    # SHWFS_Demonstrator.display_all_vignette(wfs3)
     SHWFS_Demonstrator.display_all_vignette(wfs4)
 
 def refImg_vs_height():
     tel = Telescope(2.5)
     at = Atmosphere()
     at.create_default_screen(2000,0)
-    wfs0 = WideFieldSHWFS(0,16,32,at,tel)
-    wfs1 = WideFieldSHWFS(1000,16,32,at,tel)
-    wfs2 = WideFieldSHWFS(2000,16,32,at,tel)
-    wfs3 = WideFieldSHWFS(3000,16,32,at,tel)
-    wfs4 = WideFieldSHWFS(4000,16,32,at,tel)
+    wfs0 = WideFieldSHWFS(0,16,128,at,tel)
+    wfs1 = WideFieldSHWFS(1000,16,128,at,tel)
+    wfs2 = WideFieldSHWFS(2000,16,128,at,tel)
+    wfs3 = WideFieldSHWFS(3000,16,128,at,tel)
+    wfs4 = WideFieldSHWFS(4000,16,128,at,tel)
 
     plt.figure(1)
 
@@ -167,4 +167,4 @@ def refImg_vs_height():
     plt.show()
 
 if __name__ == "__main__":
-    dmap_vs_height((0,0))
+    vignette_vs_height()

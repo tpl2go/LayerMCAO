@@ -8,6 +8,8 @@ from Telescope import Telescope
 import pickle
 import sys
 from PIL import Image
+import cProfile
+import time
 
 
 class WideFieldSHWFS(object):
@@ -232,14 +234,16 @@ class ImageSimulator(object):
         self.wfs = SH_WFS
 
         # get test image of solar granule
-        # # self.test_img = np.loadtxt(open('SunTesImage','rb'))
-        # IM = Image.open('SunGranule2.jpg','r')
-        # # figure out size of true image
-        # truth_size = int(self.wfs.pixels_lenslet * (60.0/3600*np.pi/180) / self.tel.field_of_view)
-        # IM = IM.resize((truth_size,truth_size),Image.BICUBIC)
-        # self.test_img = np.array(IM)
+        # self.test_img = np.loadtxt(open('SunTesImage','rb'))
+        IM = Image.open('SunGranule2.jpg','r').convert('L')
+        # figure out size of true image
+        truth_size = int(self.wfs.pixels_lenslet * (70.0/3600*np.pi/180) / self.tel.field_of_view)
+        IM = IM.resize((truth_size,truth_size),Image.BICUBIC)
+        self.test_img = np.array(IM)
         # self.test_img = self.test_img[:,:,0]
-        self.test_img = lena()
+        # self.test_img = lena()
+
+        self.__px_to_ang_memo__ = {}
 
     def _get_lensletscreen(self,scrn, angle,c_lenslet_pos):
         """
@@ -332,20 +336,27 @@ class ImageSimulator(object):
         :param j: vertical index of pixel
         :return: angle of ray incident on conjugated lenslet
         """
-        bias = (self.wfs.pixels_lenslet-1)/2.0 # [index]
-        # physical position of detector pixel
-        pos_x = (i-bias)*self.wfs.conjugated_delta/self.tel.Mfactor # [meters]
-        pos_y = (j-bias)*self.wfs.conjugated_delta/self.tel.Mfactor # [meters]
 
-        # convert physical position to physical angle (incident on physical lenslet)
-        tan_x = pos_x/float(self.wfs.lenslet_f)
-        tan_y = pos_y/float(self.wfs.lenslet_f)
+        try:
+            # trying to memoize this function!!
+            return self.__px_to_ang_memo__[(i,j)]
+        except KeyError:
+            bias = (self.wfs.pixels_lenslet-1)/2.0 # [index]
+            # physical position of detector pixel
+            pos_x = (i-bias)*self.wfs.conjugated_delta/self.tel.Mfactor # [meters]
+            pos_y = (j-bias)*self.wfs.conjugated_delta/self.tel.Mfactor # [meters]
 
-        # convert physical angle to conjugate angle (incident on conjugate lenslet)
-        theta_x = np.arctan(tan_x/self.tel.Mfactor)
-        theta_y = np.arctan(tan_y/self.tel.Mfactor)
+            # convert physical position to physical angle (incident on physical lenslet)
+            tan_x = pos_x/float(self.wfs.lenslet_f)
+            tan_y = pos_y/float(self.wfs.lenslet_f)
 
-        return (theta_x,theta_y)
+            # convert physical angle to conjugate angle (incident on conjugate lenslet)
+            theta_x = np.arctan(tan_x/self.tel.Mfactor)
+            theta_y = np.arctan(tan_y/self.tel.Mfactor)
+
+            self.__px_to_ang_memo__[(i,j)] = (theta_x,theta_y)
+
+            return (theta_x,theta_y)
 
     def _index_to_c_pos(self,i,j):
         bias = (self.wfs.num_lenslet-1)/2.0 # [index]
@@ -358,12 +369,11 @@ class ImageSimulator(object):
         return lenslet_pos
 
     def _vignettify(self,c_lenslet_pos, angle):
+
+        # TODO: Try translating this to C code and see if there is performance improvement
         # find z
         theta_x = angle[0]
         theta_y = angle[1]
-
-        # x = np.tan(theta_x) * self.conjugated_height + c_lenslet_pos[0] # figure out the +/- later
-        # y = np.tan(theta_y) * self.conjugated_height + c_lenslet_pos[1] # figure out the +/- later
 
         x = c_lenslet_pos[0] - np.tan(theta_x) * self.wfs.conjugated_height# figure out the +/- later
         y = c_lenslet_pos[1] - np.tan(theta_y) * self.wfs.conjugated_height# figure out the +/- later
@@ -372,12 +382,12 @@ class ImageSimulator(object):
         z = np.sqrt(x**2 + y**2)
         R = self.tel.pupil_diameter/2.0
         r = self.wfs.conjugated_lenslet_size
-
-        if z < R-r:
+        t0 = time.time()
+        if z < R-r: # Case 1
             p = 1
-        elif z > (R+r):
+        elif z > (R+r): # Case 2
             p = 0
-        elif z > R:
+        elif z > R: # Case 3
             s = (R+r+z)/2.0 # semiperimeter
             area = np.sqrt((s)*(s-r)*(s-z)*(s-R)) # Heron formula
             theta_R = np.arccos((R**2 + z**2 - r**2)/(2*R*z))
@@ -385,7 +395,7 @@ class ImageSimulator(object):
             hat = 2 * ((0.5*theta_R*R**2) + (0.5*theta_r*r**2) - area)
             p = hat / (np.pi*r**2)
 
-        else:
+        else: # Case 4
             theta_R = 2 * np.arccos((R**2 + z**2 - r**2) / (2*R*z))
             theta_r = 2 * np.arcsin(np.sin(theta_R/2.0)*R/r)
             tri = 0.5  * R**2 * np.sin(theta_R)
@@ -393,6 +403,7 @@ class ImageSimulator(object):
             cres = tri+cap - 0.5*R**2*theta_R
             p = 1 - (cres / (np.pi*r**2))
 
+        print time.time() - t0
         return p
 
     def _get_vignette_mask(self, c_lenslet_pos):
@@ -403,7 +414,7 @@ class ImageSimulator(object):
                 theta_x = angle[0]
                 theta_y = angle[1]
                 p = self._vignettify(c_lenslet_pos,(theta_x,theta_y))
-                mask[j][i] = p
+                mask[j,i] = p
         return mask
 
     def dmap(self,c_lenslet_pos):
@@ -814,7 +825,7 @@ class SHWFS_Demonstrator(object):
             for j in range(wfs.num_lenslet):
                 plt.subplot(wfs.num_lenslet,wfs.num_lenslet,i*wfs.num_lenslet+j+1)
                 plt.axis('off')
-                im = plt.imshow(all_dmaps[j][i][axis], vmin = -0.1, vmax = 0.1)
+                im = plt.imshow(all_dmaps[j,i][axis], vmin = -0.1, vmax = 0.1)
         fig.subplots_adjust(right=0.8)
         cbar_ax = fig.add_axes([0.85, 0.15, 0.03, 0.7])
         fig.colorbar(im, cax=cbar_ax)
@@ -839,9 +850,9 @@ class SHWFS_Demonstrator(object):
             for j in range(wfs.num_lenslet):
                 plt.subplot(wfs.num_lenslet,wfs.num_lenslet,i*wfs.num_lenslet+j+1)
                 plt.axis('off')
-                plt.imshow(all_dimg[j][i],cmap=plt.cm.gray,vmax=256,vmin=0)
+                plt.imshow(all_dimg[j,i],cmap=plt.cm.gray,vmax=256,vmin=0)
 
-        plt.show()
+        # plt.show()
     @staticmethod
     def display_comparison(wfs): ### TODO: fix broken methods
         all_dmap = wfs.ImgSimulator.all_dmap()
@@ -877,7 +888,7 @@ class SHWFS_Demonstrator(object):
             for i in range(wfs.num_lenslet):
                 plt.subplot(wfs.num_lenslet,wfs.num_lenslet,j*wfs.num_lenslet+i+1)
                 plt.axis('off')
-                im = plt.imshow(all_dmaps[j][i][0], vmin = -0.1, vmax = 0.1)
+                im = plt.imshow(all_dmaps[j,i][0], vmin = -0.1, vmax = 0.1)
 
         fig2 = plt.figure(2)
         sc = wfs._get_metascreen(wfs.atmos.scrns[0])
@@ -968,12 +979,9 @@ class SlopifyMethods(object):
     def slopify1(screen):
 
         # Method 1 - Mean end to end slope
-        x_tilt_acc = 0.0
-        y_tilt_acc = 0.0
         S = screen.shape[0]
-        for k in range(S):
-            x_tilt_acc = x_tilt_acc + (screen[k,S-1] - screen[k,0])
-            y_tilt_acc = y_tilt_acc + (screen[S-1,k] - screen[0,k])
+        x_tilt_acc = (screen[:,S-1] - screen[:,0]).sum()
+        y_tilt_acc = (screen[S-1,:] - screen[0,:]).sum()
         oXSlope = float(x_tilt_acc) / (S*S)
         oYSlope= float(y_tilt_acc) / (S*S)
 
@@ -1024,6 +1032,12 @@ if __name__ == '__main__':
     tel = Telescope(2.5)
     at = Atmosphere()
     at.create_default_screen(100,2)
-    wfs = WideFieldSHWFS(0,16,32,at,tel)
-    SHWFS_Demonstrator.display_comparison(wfs)
+    wfs = WideFieldSHWFS(0,16,128,at,tel)
+    # SHWFS_Demonstrator.display_comparison(wfs)
     # SHWFS_Demonstrator.compare_dmaps(wfs)
+    # plt.imshow(wfs.ImgSimulator.get_test_img(),cmap=plt.cm.gray)
+    # cProfile.run('SHWFS_Demonstrator.display_all_dimg(wfs)')
+    # SHWFS_Demonstrator.display_all_vignette(wfs)
+    # plt.imshow(wfs.ImgSimulator.get_test_img())
+    # plt.show()
+    SHWFS_Demonstrator.display_all_dimg(wfs)
