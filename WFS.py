@@ -1,5 +1,4 @@
 import numpy as np
-from scipy import stats
 from scipy.misc import lena
 from Reconstructor import ReconMethods
 import matplotlib.pyplot as plt
@@ -258,14 +257,18 @@ class ImageSimulator(object):
         # self.test_img = self.test_img[:,:,0]
         # self.test_img = lena()
 
+        # Eager initialization of theta map
         self.theta_map = self._get_theta_map()
+
+        # Eager initialization of conjugated position map
+        self.c_pos_map = self._get_c_pos_map()
 
     def _get_lensletscreen(self, scrn, angle, c_lenslet_pos):
         """
         Portion of a screen seen by a lenslet in one particular direction
         :param scrn: Screen object
         :param angle: (x,y) angle of view from pupil # [radian tuple]
-        :param c_lenslet_pos: (x,y) position of conjugated lenslet # [float tuple]
+        :param c_lenslet_pos: (x,y) position of conjugated lenslet # [meter tuple]
         """
         theta_x = angle[0]  # [radian]
         theta_y = angle[1]  # [radian]
@@ -282,6 +285,7 @@ class ImageSimulator(object):
         y_mid = scrn.phase_screen.shape[1] / 2.0 + pos_y / float(scrn.delta)  # [index]
 
         # convert lenslets size to phase screen indices; constant for all directions
+        # TODO: This is repeated calculation. anyway to remove it?
         sizeX = int(self.wfs.pixels_lenslet / 2.0 * self.wfs.conjugated_delta / scrn.delta)  # [index]
         sizeY = int(self.wfs.pixels_lenslet / 2.0 * self.wfs.conjugated_delta / scrn.delta)  # [index]
 
@@ -301,13 +305,13 @@ class ImageSimulator(object):
         # grab a snapshot the size of a lenslet
         output = scrn.phase_screen[y1:y2, x1:x2]
 
-        return np.copy(output)
+        return output
 
     def _stack_lensletscreen(self, angle, c_lenslet_pos):
         """
         Stacks the portions of all the screens seen by a lenslet in a particular direction
         :param angle: (x,y) angle of view from pupil # [radian tuple]
-        :param c_lenslet_pos: (x,y) position of conjugated lenslet # [float tuple]
+        :param c_lenslet_pos: (x,y) position of conjugated lenslet # [meter tuple]
         :return: Net phase screen seen by the lenslet # [radian ndarray]
         """
         # sanity check: that lenslet_f is implemented correctly
@@ -333,18 +337,28 @@ class ImageSimulator(object):
 
         Assumption: the tip-tilt distortion is more significant than other modes of optical abberation.
          This requires fried radius to be about just as large as conjugated lenslet size
-        Usage: The various possible algorithms used to slopify are stored in  a class. User can change
+        Usage: The various possible algorithms used to slopify are stored in a class. User can change
          the choice of algorithm under the wrapper of this function
         :param stacked_phase: Net phase screen seen by the lenslet # [radian ndarray]
         :return: (x_shift,y_shift) in conjugate image plane # [meter]
         """
 
-        (x_shift, y_shift) = SlopifyMethods.slopify1(stacked_phase)
+
+        slope = _SlopifyMethods.slopify1(stacked_phase)
+
         # TODO: manage the units of the shifts in image plane
         # TODO: from radians/meter to meter
+        (x_shift, y_shift) = slope
+
         return (x_shift, y_shift)
 
     def _index_to_c_pos(self, i, j):
+        """
+        Generates the (x,y) conjugated position of lenslet given its indices
+        :param i: x index # [int]
+        :param j: y index # [int]
+        :return: (x,y) conjugated position # [meter tuple]
+        """
         bias = (self.wfs.num_lenslet - 1) / 2.0  # [index]
         # conjugated position of lenslet
         pos_x = (i - bias) * self.wfs.conjugated_lenslet_size  # [meters]
@@ -355,9 +369,10 @@ class ImageSimulator(object):
         return lenslet_pos
 
     def _vignettify(self, c_lenslet_pos, angle):
+        # function is deprecated
+        ### TODO: Try translating this to C code and see if there is performance improvement
+        ### TODO: Any numerical / algebraic tricks to make this run faster?
 
-        # TODO: Try translating this to C code and see if there is performance improvement
-        # TODO: Any numerical / algebraic tricks to make this run faster?
         # find z
         theta_x = angle[0]
         theta_y = angle[1]
@@ -392,6 +407,12 @@ class ImageSimulator(object):
         return p
 
     def _get_vignette_mask(self, c_lenslet_pos):
+        """
+        Generates a vignette mask for a given lenslet image
+         Mask values between 0 and 1
+        :param c_lenslet_pos: (x,y) position of conjugated lenslet # [meter tuple]
+        :return:vignette mask # [ndarray]
+        """
         R = self.tel.pupil_diameter / 2.0
         r = self.wfs.conjugated_lenslet_size
 
@@ -435,7 +456,12 @@ class ImageSimulator(object):
         return mask
 
     def _get_theta_map(self):
+        """
+        Generates a map of conjugated angles associated with each pixel in lenslet image
+        :return: theta map # [radian ndarray]
+        """
         theta_map = np.empty((2, self.wfs.pixels_lenslet, self.wfs.pixels_lenslet))
+
         for j in range(self.wfs.pixels_lenslet):
             for i in range(self.wfs.pixels_lenslet):
                 bias = (self.wfs.pixels_lenslet - 1) / 2.0  # [index]
@@ -456,6 +482,17 @@ class ImageSimulator(object):
 
         return theta_map
 
+    def _get_c_pos_map(self):
+        output = np.empty((2,self.wfs.num_lenslet, self.wfs.num_lenslet), np.ndarray)
+        for j in range(self.wfs.num_lenslet):
+            for i in range(self.wfs.num_lenslet):
+                c_pos = self._index_to_c_pos(i, j)
+                output[0,j, i] = c_pos[0]
+                output[1,j, i] = c_pos[1]
+
+        return output
+
+
     def dmap(self, c_lenslet_pos):
         """
         Generates distortion map --- the (x,y) shift for every pixel in lenslet image
@@ -463,7 +500,7 @@ class ImageSimulator(object):
         Context: In layer oriented MCAO, if a WFS is misconjugated from a screen, different pixels, each representing
          different directions, see different parts
          of the screen and hence is shifted by different amounts
-        :param c_lenslet_pos: (x,y) position of conjugated lenslet # [float tuple]
+        :param c_lenslet_pos: (x,y) position of conjugated lenslet # [meter tuple]
         :return: distortion map --- (x-shift matrix, y-shift matrix) # [meter ndarray]
         """
         # initialize output variables
@@ -497,9 +534,9 @@ class ImageSimulator(object):
 
     def dimg(self, c_lenslet_pos):
         """
-        Generates the distorted image behind the specified SH lenslet
-        :param c_lenslet_pos:
-        :return:
+        Generates the distorted image behind the given SH lenslet
+        :param c_lenslet_pos: conjugated position of SH lenslet # [meter tuple]
+        :return: distorted image # [ndarray]
         """
         # Call dmap
         distortion = self.dmap(c_lenslet_pos)
@@ -533,7 +570,8 @@ class ImageSimulator(object):
 
     def save_dimg(self, c_lenslet_pos):
         """
-        A wrapper of ImageSimulator.dimg function that saves the dimg output
+        A wrapper of ImageSimulator.dimg function
+         Saves the dimg output
         :param c_lenslet_pos:
         :return:
         """
@@ -546,7 +584,8 @@ class ImageSimulator(object):
 
     def save_all_dimg(self):
         """
-        A wrapper of ImageSimulator.all_dimg that saves the all_dimg output
+        A wrapper of ImageSimulator.all_dimg
+         Saves the all_dimg output
         :return:
         """
         all_dimg = self.all_dimg()
@@ -559,7 +598,7 @@ class ImageSimulator(object):
 
     def all_dmap(self):
         """
-        Generates the (x,y) shift for every pixel of lenslet image for all lenslets
+        Generates the (x,y) shift for every pixel in lenslet image for all lenslets
         :return: x-shifts y-shifts # [meters ndarray]
         """
         # Initialize output array
@@ -594,10 +633,95 @@ class ImageSimulator(object):
 
         return output
 
+    def all_dimg_new(self):
+        """
+        Generates the distorted image for every lenslet in the WFS
+        :return: image ndarray
+        """
+        dimgufunc = np.frompyfunc(self.dimg_new,2,1)
+        # Convert
+        output = dimgufunc(self.c_pos_map[0,:,:],self.c_pos_map[1,:,:])
+
+        return output
+
+    def dmap_new(self, x,y):
+        """
+        Generates distortion map --- the (x,y) shift for every pixel in lenslet image
+
+        Context: In layer oriented MCAO, if a WFS is misconjugated from a screen, different pixels, each representing
+         different directions, see different parts
+         of the screen and hence is shifted by different amounts
+        :param c_lenslet_pos: (x,y) position of conjugated lenslet # [meter tuple]
+        :return: distortion map --- (x-shift matrix, y-shift matrix) # [meter ndarray]
+        """
+        # initialize output variables
+        oXSlope = np.zeros((self.wfs.pixels_lenslet, self.wfs.pixels_lenslet))
+        oYSlope = np.zeros((self.wfs.pixels_lenslet, self.wfs.pixels_lenslet))
+
+        # convert detector pixel index to angles
+        bias = (self.wfs.pixels_lenslet - 1) / 2.0  # [index]
+        for i in range(self.wfs.pixels_lenslet):
+            for j in range(self.wfs.pixels_lenslet):
+                # physical position of detector pixel
+                pos_x = (i - bias) * self.wfs.conjugated_delta / self.tel.Mfactor  # [meters]
+                pos_y = (j - bias) * self.wfs.conjugated_delta / self.tel.Mfactor  # [meters]
+
+                # convert physical position to physical angle (incident on physical lenslet)
+                tan_x = pos_x / float(self.wfs.lenslet_f)
+                tan_y = pos_y / float(self.wfs.lenslet_f)
+
+                # convert physical angle to conjugate angle (incident on conjugate lenslet)
+                theta_x = np.arctan(tan_x / self.tel.Mfactor)
+                theta_y = np.arctan(tan_y / self.tel.Mfactor)
+
+                # stack metapupils and slopify
+                screen = self._stack_lensletscreen((theta_x, theta_y), (x,y))
+                (x_shift, y_shift) = self._screen_to_shifts(screen)
+
+                oXSlope[j, i] = x_shift
+                oYSlope[j, i] = y_shift
+
+        return np.array([oXSlope, oYSlope])
+
+    def dimg_new(self, x,y):
+        """
+        Generates the distorted image behind the given SH lenslet
+        :param c_lenslet_pos: conjugated position of SH lenslet # [meter tuple]
+        :return: distorted image # [ndarray]
+        """
+        # Call dmap
+        distortion = self.dmap_new(x,y)
+
+        x_distortion = distortion[0]
+        y_distortion = distortion[1]
+
+        # Crop test image
+        assert x_distortion.shape[0] < self.test_img.shape[0]  # TODO: implement adaptive resize?
+        x1 = self.test_img.shape[0] / 2 - x_distortion.shape[0] / 2
+        oimg = np.zeros((self.wfs.pixels_lenslet, self.wfs.pixels_lenslet))
+
+        # Distortion Process
+        scale = 50  # fudge factor
+
+        shift = lambda (x, y): (x + int(scale * x_distortion[x, y]), y + int(scale * y_distortion[x, y]))
+
+        for j in range(oimg.shape[0]):
+            for i in range(oimg.shape[1]):
+                try:
+                    pos = shift((i, j))
+                    oimg[j, i] = self.test_img[x1 + pos[1], x1 + pos[0]]
+                except IndexError:
+                    pass
+
+        # Vignetting Process
+        mask = self._get_vignette_mask((x,y))
+        oimg = oimg * mask
+
+        return oimg
+
     def get_test_img(self):
         """
-        Returns the portion of standard test image used to represent dmap
-        :return:
+        :return: portion of standard test image used to represent dmap
         """
 
         assert self.wfs.pixels_lenslet <= self.test_img.shape[0]
@@ -610,7 +734,7 @@ class ImageSimulator(object):
         return cropped_img
 
     def hash_function(self):
-        # Pretty stupid hash but it works for my naming purposes
+        # Pretty stupid hash but it works for my file naming purposes
         hash = str(self.wfs.conjugated_height) + str(self.wfs.num_lenslet) + str(self.wfs.pixels_lenslet)
         for scrn in self.atmos.scrns:
             hash = hash + str(scrn.height) + str(scrn.ID)
@@ -775,17 +899,17 @@ class SHWFS_Demonstrator(object):
     the operations of the wide field extended source SH WFS
     
     Example Usage:
-     tel = Telescope(2.5)
+      tel = Telescope(2.5)
      
-     at = Atmosphere()
+      at = Atmosphere()
      
-     at.create_default_screen(100,0)
+      at.create_default_screen(100,0)
      
-     wfs = WideFieldSHWFS(100,16,32,at,tel)
+      wfs = WideFieldSHWFS(100,16,128,at,tel)
      
-     SHWFS_Demonstrator.display_comparison(wfs)
+      SHWFS_Demonstrator.display_comparison(wfs)
      
-     SHWFS_Demonstrator.compare_dmaps(wfs)
+      SHWFS_Demonstrator.compare_dmaps(wfs)
     """
 
     @staticmethod
@@ -885,7 +1009,7 @@ class SHWFS_Demonstrator(object):
         :param wfs:
         :return:
         """
-        all_dimg = wfs.ImgSimulator.all_dimg()
+        all_dimg = wfs.ImgSimulator.all_dimg_new()
 
         # Display process
         plt.figure(1)
@@ -1008,7 +1132,7 @@ class SHWFS_Demonstrator(object):
         slopes = np.empty((2, N, N))
         for j in range(N):
             for i in range(N):
-                oXSlope, oYSlope = SlopifyMethods.slopify1(phasescreen[j * num:(j + 1) * num, i * num:(i + 1) * num])
+                oXSlope, oYSlope = _SlopifyMethods.slopify1(phasescreen[j * num:(j + 1) * num, i * num:(i + 1) * num])
                 slopes[0, j, i] = oXSlope
                 slopes[1, j, i] = oYSlope
 
@@ -1020,69 +1144,86 @@ class SHWFS_Demonstrator(object):
         slopes = np.empty((2, N, N))
         for j in range(N):
             for i in range(N):
-                oXSlope, oYSlope = SlopifyMethods.slopify1(phasescreen[j * num:(j + 1) * num, i * num:(i + 1) * num])
+                oXSlope, oYSlope = _SlopifyMethods.slopify1(phasescreen[j * num:(j + 1) * num, i * num:(i + 1) * num])
                 slopes[0, j, i] = oXSlope
                 slopes[1, j, i] = oYSlope
         return slopes
 
 
-class SlopifyMethods(object):
+class _SlopifyMethods(object):
+    """
+    This class is a collection of slopify methods we experimented with.
+    By default, use slopify1
+    """
+
     @staticmethod
     def slopify1(screen):
-
-        # Method 1 - Mean end to end slope
+        # Method 1 - Mean end to end difference
         S = screen.shape[0]
+
         x_tilt_acc = (screen[:, S - 1] - screen[:, 0]).sum()
         y_tilt_acc = (screen[S - 1, :] - screen[0, :]).sum()
-        oXSlope = float(x_tilt_acc) / (S * S)
-        oYSlope = float(y_tilt_acc) / (S * S)
+        oXSlope = x_tilt_acc / (S * S)
+        oYSlope = y_tilt_acc / (S * S)
 
         slope = (oXSlope, oYSlope)
         return slope
 
-    def slopify2(cls, screen):
-        # TODO: remove hardcode
-        oXSlope = np.zeros(screen.shape)
-        oYSlope = np.zeros(screen.shape)
-
+    @staticmethod
+    def slopify2(screen):
         # Method 2 - Linear regression of mean
-        for j in range(16):
-            sumX = np.sum(screen[32 * j:32 * (j + 1) - 1, :], axis=0)
-            for i in range(16):
-                slopeX, interceptX, r_valueX, p_valueX, std_errX = stats.linregress(np.arange(32),
-                                                                                    sumX[32 * i:32 * (i + 1)])
-                oXSlope[j * 32:(j + 1) * 32, i * 32:(i + 1) * 32] = slopeX / 32.0
-        for i in range(16):
-            sumY = np.sum(screen[:, 32 * i:32 * (i + 1) - 1], axis=1)
-            for j in range(16):
-                slopeY, interceptY, r_valueY, p_valueY, std_errY = stats.linregress(np.arange(32),
-                                                                                    sumY[32 * j:32 * (j + 1)])
-                oYSlope[j * 32:(j + 1) * 32, i * 32:(i + 1) * 32] = slopeY / 32.0
-        slope = np.array([oXSlope, oYSlope])
-        return slope
 
-    def slopify3(cls, screen):
-        # TODO: remove hardcode
-        oXSlope = np.zeros(screen.shape)
-        oYSlope = np.zeros(screen.shape)
+        # Get size of screen
+        # use sum()/S instead of mean() for efficiency
+        S = screen.shape[0]
 
+        # Calculate basis x-axis
+        base = np.arange(S)
+        base_bar = base.sum() / float(S)
+        baseV = base - base_bar
+        var_base = (baseV ** 2).sum()
+
+        # Calculate X slope
+        xAves = screen.sum(axis=0) / float(S)  # mean
+        xAvesV = xAves - xAves.sum() / S
+        cov = (xAvesV * baseV).sum()
+        oXSlope = (cov / var_base)
+
+        # Calculate Y slope
+        yAves = screen.sum(axis=1) / float(S)  # mean
+        yAvesV = yAves - yAves.sum() / S
+        cov = (yAvesV * baseV).sum()
+        oYSlope = (cov / var_base)
+
+        return (oXSlope, oYSlope)
+
+    @staticmethod
+    def slopify3(screen):
         # Method 3 - mean of linear regression
-        for i in range(16):
-            for j in range(16):
-                x_slope_acc = 0.0
-                y_slope_acc = 0.0
-                for k in range(32):
-                    slopeX, interceptX, r_valueX, p_valueX, std_errX = \
-                        stats.linregress(np.arange(32), screen[32 * j + k, 32 * i:32 * (i + 1)])
-                    x_slope_acc = x_slope_acc + slopeX
-                    slopeY, interceptY, r_valueY, p_valueY, std_errY = \
-                        stats.linregress(np.arange(32), screen[32 * j:32 * (j + 1), 32 * i + k])
-                    y_slope_acc = y_slope_acc + slopeY
 
-                oXSlope[j * 32:(j + 1) * 32, i * 32:(i + 1) * 32] = x_slope_acc / 32.0
-                oYSlope[j * 32:(j + 1) * 32, i * 32:(i + 1) * 32] = y_slope_acc / 32.0
-        slope = np.array([oXSlope, oYSlope])
-        return slope
+        # Get size of screen
+        # use sum()/S instead of mean() for efficiency
+        S = screen.shape[0]
+
+        # Calculate basis x-axis
+        base = np.arange(S)
+        base_bar = base.sum() / float(S)
+        baseV = base - base_bar
+        var_base = (baseV ** 2).sum()
+
+        # Calculate X slope
+        x_bars = screen.sum(axis=1) / float(S)
+        XV = screen - x_bars.reshape((S, 1))  # XV = (x_i-x_bar)
+        cov = ((XV * baseV).sum(axis=1)) / var_base  # cov[x,y] = Sigma[(x_i-x_bar)(y_i-y_bar)] / Var[x]
+        oXSlope = cov.sum() / S
+
+        # Calculate Y slope
+        y_bars = screen.sum(axis=0) / float(S)
+        YV = screen - y_bars  # YV = (y_i-y_bar)
+        cov = ((YV * baseV.reshape((S, 1))).sum(axis=0)) / var_base  # cov[x,y] = Sigma[(x_i-x_bar)(y_i-y_bar)] / Var[x]
+        oYSlope = cov.sum() / S
+
+        return (oXSlope, oYSlope)
 
 
 if __name__ == '__main__':
@@ -1090,11 +1231,5 @@ if __name__ == '__main__':
     at = Atmosphere()
     at.create_default_screen(100, 2)
     wfs = WideFieldSHWFS(5000, 16, 128, at, tel)
-    # SHWFS_Demonstrator.display_comparison(wfs)
-    # SHWFS_Demonstrator.compare_dmaps(wfs)
-    # plt.imshow(wfs.ImgSimulator.get_test_img(),cmap=plt.cm.gray)
-    # cProfile.run('SHWFS_Demonstrator.display_all_dimg(wfs)')
-    # SHWFS_Demonstrator.display_all_vignette(wfs)
-    # plt.imshow(wfs.ImgSimulator.get_test_img())
-    # plt.show()
-    SHWFS_Demonstrator.display_all_dimg(wfs)
+    cProfile.run('SHWFS_Demonstrator.display_all_dimg(wfs)')
+    SHWFS_Demonstrator.display_all_dmap(wfs)

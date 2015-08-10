@@ -167,4 +167,4 @@ def refImg_vs_height():
     plt.show()
 
 if __name__ == "__main__":
-    vignette_vs_height()
+    refImg_vs_height()
