@@ -359,11 +359,10 @@ class ImageSimulator(object):
         :return: (x_shift,y_shift) in conjugate image plane # [meter]
         """
 
-        slope = _SlopifyMethods.slopify1(stacked_phase)
+        tilts = _TiltifyMethods.slopify1(stacked_phase)
 
-        # TODO: manage the units of the shifts in image plane
-        # TODO: from radians/meter to meter
-        (x_shift, y_shift) = slope
+        #
+        (x_shift, y_shift) = tilts
 
         return (x_shift, y_shift)
 
@@ -1018,14 +1017,17 @@ class SHWFS_Demonstrator(object):
         return slopes
 
 
-class _SlopifyMethods(object):
+class _TiltifyMethods(object):
     """
-    This class is a collection of slopify methods we experimented with.
+    This class is a collection of tiltify methods we experimented with.
     By default, use slopify1
     """
 
     @staticmethod
     def slopify1(screen):
+        """
+        :return: G tilt # [radian tuple]
+        """
         # Method 1 - Mean end to end difference
         S = screen.shape[0]
 
