@@ -8,7 +8,6 @@ import pickle
 import sys
 from PIL import Image
 import cProfile
-import time
 
 
 class WideFieldSHWFS(object):
@@ -50,6 +49,10 @@ class WideFieldSHWFS(object):
         # relevant objects
         self.atmos = atmosphere
         self.tel = telescope
+
+        # Experimental algorithms
+        ### Write your own ImageSimulator / ImageInterpreter algorithm and construct it as an object here
+        ### This a strategy pattern
         self.ImgSimulator = ImageSimulator(atmosphere, telescope, self)
         self.ImgInterpreter = ImageInterpreter(self.ImgSimulator)
 
@@ -226,20 +229,33 @@ class WideFieldSHWFS(object):
         Unlike display methods, this method always returns a value
         :return:
         """
+
+        # This uses a hybrid template pattern and strategy pattern
         all_dimg = self.ImgSimulator.all_dimg()
-        all_slopes = ImageInterpreter.all_dming_to_slopes(all_dimg)
+        all_slopes = ImageInterpreter.all_dimg_to_slopes(all_dimg)
 
         return all_slopes
 
 
+# [Software Design] I am resisting the implementation of an abstract ImageInterpreter / ImageSimulator class because
+# I do not want the contracts to be set in stone. This code is still highly developmental and fluid. And the fact
+# that it is written in python means that it is still a highly dynamic and rapidly evolving piece of code.
+
 class ImageSimulator(object):
     """
-    Image Simulator aims to accurately generate the subimages behind the Shack-Hartmann lenslets, given information
+    ImageSimulator generates the subimages behind the Shack-Hartmann lenslets given information
     about the atmosphere, telescope and Shack-Hartmann WFS
-    At the moment, ImageSimulator distorts an image by shifting individual pixels. No smearing of pixels is implemented
 
-    This class is meant to be embeded within a SH-WFS class. It can generate individual/all distortion maps
-     (dmap), individual/all distorted images (dimg). dimg takes vignetting effects into account.
+    Algorithm:
+     This version of ImageSimulator first generates a distortion map by stacking phase screens for each direction.
+     Image is then distorted by shifting individual pixels. No smearing of pixels is implemented
+
+    Architecture:
+     This class is meant to be embeded within a SH-WFS class as a strategy.
+
+    Contract:
+     Implements all_dimg()
+
     """
 
     def __init__(self, atmosphere, telescope, SH_WFS):
@@ -295,12 +311,12 @@ class ImageSimulator(object):
         y1 = int(y_mid) - sizeY
         y2 = int(y_mid) + sizeY
 
-        # sanity check
-        # TODO remove this check by automatically doubling the phase screen size
-        assert x1 > 0
-        assert x2 < scrn.phase_screen.shape[0]
-        assert y1 > 0
-        assert y2 < scrn.phase_screen.shape[1]
+        # # sanity check
+        # # TODO remove this check by automatically doubling the phase screen size
+        # assert x1 > 0
+        # assert x2 < scrn.phase_screen.shape[0]
+        # assert y1 > 0
+        # assert y2 < scrn.phase_screen.shape[1]
 
         # grab a snapshot the size of a lenslet
         output = scrn.phase_screen[y1:y2, x1:x2]
@@ -342,7 +358,6 @@ class ImageSimulator(object):
         :param stacked_phase: Net phase screen seen by the lenslet # [radian ndarray]
         :return: (x_shift,y_shift) in conjugate image plane # [meter]
         """
-
 
         slope = _SlopifyMethods.slopify1(stacked_phase)
 
@@ -483,15 +498,14 @@ class ImageSimulator(object):
         return theta_map
 
     def _get_c_pos_map(self):
-        output = np.empty((2,self.wfs.num_lenslet, self.wfs.num_lenslet), np.ndarray)
+        output = np.empty((2, self.wfs.num_lenslet, self.wfs.num_lenslet), np.ndarray)
         for j in range(self.wfs.num_lenslet):
             for i in range(self.wfs.num_lenslet):
                 c_pos = self._index_to_c_pos(i, j)
-                output[0,j, i] = c_pos[0]
-                output[1,j, i] = c_pos[1]
+                output[0, j, i] = c_pos[0]
+                output[1, j, i] = c_pos[1]
 
         return output
-
 
     def dmap(self, c_lenslet_pos):
         """
@@ -633,92 +647,6 @@ class ImageSimulator(object):
 
         return output
 
-    def all_dimg_new(self):
-        """
-        Generates the distorted image for every lenslet in the WFS
-        :return: image ndarray
-        """
-        dimgufunc = np.frompyfunc(self.dimg_new,2,1)
-        # Convert
-        output = dimgufunc(self.c_pos_map[0,:,:],self.c_pos_map[1,:,:])
-
-        return output
-
-    def dmap_new(self, x,y):
-        """
-        Generates distortion map --- the (x,y) shift for every pixel in lenslet image
-
-        Context: In layer oriented MCAO, if a WFS is misconjugated from a screen, different pixels, each representing
-         different directions, see different parts
-         of the screen and hence is shifted by different amounts
-        :param c_lenslet_pos: (x,y) position of conjugated lenslet # [meter tuple]
-        :return: distortion map --- (x-shift matrix, y-shift matrix) # [meter ndarray]
-        """
-        # initialize output variables
-        oXSlope = np.zeros((self.wfs.pixels_lenslet, self.wfs.pixels_lenslet))
-        oYSlope = np.zeros((self.wfs.pixels_lenslet, self.wfs.pixels_lenslet))
-
-        # convert detector pixel index to angles
-        bias = (self.wfs.pixels_lenslet - 1) / 2.0  # [index]
-        for i in range(self.wfs.pixels_lenslet):
-            for j in range(self.wfs.pixels_lenslet):
-                # physical position of detector pixel
-                pos_x = (i - bias) * self.wfs.conjugated_delta / self.tel.Mfactor  # [meters]
-                pos_y = (j - bias) * self.wfs.conjugated_delta / self.tel.Mfactor  # [meters]
-
-                # convert physical position to physical angle (incident on physical lenslet)
-                tan_x = pos_x / float(self.wfs.lenslet_f)
-                tan_y = pos_y / float(self.wfs.lenslet_f)
-
-                # convert physical angle to conjugate angle (incident on conjugate lenslet)
-                theta_x = np.arctan(tan_x / self.tel.Mfactor)
-                theta_y = np.arctan(tan_y / self.tel.Mfactor)
-
-                # stack metapupils and slopify
-                screen = self._stack_lensletscreen((theta_x, theta_y), (x,y))
-                (x_shift, y_shift) = self._screen_to_shifts(screen)
-
-                oXSlope[j, i] = x_shift
-                oYSlope[j, i] = y_shift
-
-        return np.array([oXSlope, oYSlope])
-
-    def dimg_new(self, x,y):
-        """
-        Generates the distorted image behind the given SH lenslet
-        :param c_lenslet_pos: conjugated position of SH lenslet # [meter tuple]
-        :return: distorted image # [ndarray]
-        """
-        # Call dmap
-        distortion = self.dmap_new(x,y)
-
-        x_distortion = distortion[0]
-        y_distortion = distortion[1]
-
-        # Crop test image
-        assert x_distortion.shape[0] < self.test_img.shape[0]  # TODO: implement adaptive resize?
-        x1 = self.test_img.shape[0] / 2 - x_distortion.shape[0] / 2
-        oimg = np.zeros((self.wfs.pixels_lenslet, self.wfs.pixels_lenslet))
-
-        # Distortion Process
-        scale = 50  # fudge factor
-
-        shift = lambda (x, y): (x + int(scale * x_distortion[x, y]), y + int(scale * y_distortion[x, y]))
-
-        for j in range(oimg.shape[0]):
-            for i in range(oimg.shape[1]):
-                try:
-                    pos = shift((i, j))
-                    oimg[j, i] = self.test_img[x1 + pos[1], x1 + pos[0]]
-                except IndexError:
-                    pass
-
-        # Vignetting Process
-        mask = self._get_vignette_mask((x,y))
-        oimg = oimg * mask
-
-        return oimg
-
     def get_test_img(self):
         """
         :return: portion of standard test image used to represent dmap
@@ -740,11 +668,28 @@ class ImageSimulator(object):
             hash = hash + str(scrn.height) + str(scrn.ID)
         return hash
 
+    def all_vig_mask(self):
+        output = np.empty((self.wfs.num_lenslet, self.wfs.num_lenslet), np.ndarray)
+        for j in range(self.wfs.num_lenslet):
+            for i in range(self.wfs.num_lenslet):
+                c_lenslet_pos = self._index_to_c_pos(i, j)
+                output[j, i] = self._get_vignette_mask(c_lenslet_pos)
+        return output
+
 
 class ImageInterpreter(object):
     """
-    ImageInterpreter takes the subimages produced behind the SH lenslets and tries to extract the slope
-    information above each lenslet.
+    ImageInterpreter extract the slope iformation above each lenslet given their subimages
+
+    Algorithm:
+     This version of ImageInterpreter implements corelation and interpolation algorithms found in
+     "Evaluation of image-shift measurement algorithms for solar Shack-Hartmann wavefront sensors, 	Lofdahl, M. G(2010)"
+
+    Architecture:
+     This class is meant to be embeded within a SH-WFS class as a strategy object.
+
+    Contract:
+     Implements all_dimg_to_slopes()
     """
 
     def __init__(self, ImgSimulator):
@@ -786,93 +731,7 @@ class ImageInterpreter(object):
     def all_dimg_to_slopes(self, all_dimg):
         # TODO
         # find reference image
-        mid = all_dimg.shape[0] / 2
-        imgRef = all_dimg[mid, mid]
-
-    def _SquaredDifferenceFunction(self, img, imgRef, xShift, yShift):
-        assert img.shape[0] < imgRef.shape[0]
-
-        # find the starting corner of imgRef
-        x1 = imgRef.shape[0] / 2.0 - img.shape[0] / 2.0 + int(xShift)
-        y1 = imgRef.shape[1] / 2.0 - img.shape[1] / 2.0 + int(yShift)
-
-        diff = (img - imgRef[y1:y1 + img.shape[1], x1:x1 + img.shape[0]]) ** 2
-
-        return np.sum(np.sum(diff))
-
-    def SDF(self, img, imgRef, shiftLimit):
-
-        c_matrix = np.zeros((2 * shiftLimit + 1, 2 * shiftLimit + 1))
-
-        bias = c_matrix.shape[0] / 2
-
-        for j in range(c_matrix.shape[0]):
-            for i in range(c_matrix.shape[0]):
-                c_matrix[j, i] = self._SquaredDifferenceFunction(img, imgRef, i - bias, j - bias)
-
-        return c_matrix
-
-    def c_to_s_matrix(self, c_matrix):
-        min = np.unravel_index(c_matrix.argmin(), c_matrix.shape)
-        print min
-
-        if min[0] == 0 or min[0] == c_matrix.shape[0] \
-                or min[1] == 0 or min[1] == c_matrix.shape[1]:
-            raise RuntimeError("Minimum is found on an edge")
-
-        s_matrix = c_matrix[min[0] - 1:min[0] + 2, min[1] - 1:min[1] + 2]
-
-        return s_matrix
-
-    def TwoDLeastSquare(self, s_matrix):
-        a2 = (np.average(s_matrix[:, 2]) - np.average(s_matrix[:, 0])) / 2.0
-        a3 = (np.average(s_matrix[:, 2]) - 2 * np.average(s_matrix[:, 1]) + np.average(s_matrix[:, 0])) / 2.0
-        a4 = (np.average(s_matrix[2, :]) - np.average(s_matrix[0, :])) / 2.0
-        a5 = (np.average(s_matrix[2, :]) - 2 * np.average(s_matrix[1, :]) + np.average(s_matrix[0, :])) / 2.0
-        a6 = (s_matrix[2, 2] - s_matrix[2, 0] - s_matrix[0, 2] + s_matrix[0, 0]) / 4.0
-
-        print (a2, a3, a4, a5, a6)
-
-        # 1D Minimum (I have no idea what this means)
-        # x_min = -a2/(2*a3)
-        # y_min = -a4/(2*a5)
-
-        # 2D Minimum
-        x_min = (2 * a2 * a5 - a4 * a6) / (a6 ** 2 - 4 * a3 * a5)
-        y_min = (2 * a3 * a4 - a2 * a6) / (a6 ** 2 - 4 * a3 * a5)
-
-        return (x_min, y_min)
-
-    def TwoDQuadratic(self, s_matrix):
-        a2 = (s_matrix[1, 2] - s_matrix[1, 0]) / 2.0
-        a3 = (s_matrix[1, 2] - 2 * s_matrix[1, 1] + s_matrix[1, 0]) / 2.0
-        a4 = (s_matrix[2, 1] - s_matrix[0, 1]) / 2.0
-        a5 = (s_matrix[2, 1] - 2 * s_matrix[1, 1] + s_matrix[0, 1]) / 2.0
-        a6 = (s_matrix[2, 2] - s_matrix[2, 0] - s_matrix[0, 2] + s_matrix[0, 0]) / 4.0
-
-        # 1D Minimum (I have no idea what this means)
-        # x_min = -a2/(2*a3)
-        # y_min = -a4/(2*a5)
-
-        # 2D Minimum
-        x_min = (2 * a2 * a5 - a4 * a6) / (a6 ** 2 - 4 * a3 * a5)
-        y_min = (2 * a3 * a4 - a2 * a6) / (a6 ** 2 - 4 * a3 * a5)
-
-        return (x_min, y_min)
-
-    def spatialAverage(self, all_dimg):
-        """
-        Reconstruct truth image
-        :param all_dimg:
-        :return:
-        """
-        ave = np.zeros(all_dimg[0, 0].shape)
-        for j in range(all_dimg.shape[0]):
-            for i in range(all_dimg.shape[1]):
-                ave = ave + all_dimg[j, i]
-
-        ave = ave / (all_dimg.shape[0] * all_dimg.shape[1])
-        return ave
+        pass
 
     def compare_refImg(self, dimg, recon_dimg):
         plt.figure(1)
@@ -892,6 +751,15 @@ class ImageInterpreter(object):
 
         plt.show()
 
+    def _measure(self, dimg, refImg):
+        c_matrix = _CorrelationAlgorithms.SDF(dimg, refImg, 5)
+        s_matrix = _InterpolationAlgorithms.c_to_s_matrix(c_matrix)
+        shifts = _InterpolationAlgorithms.TwoDLeastSquare(s_matrix)
+
+        return shifts
+
+    def all_measure(self):
+        pass
 
 class SHWFS_Demonstrator(object):
     """
@@ -1009,7 +877,7 @@ class SHWFS_Demonstrator(object):
         :param wfs:
         :return:
         """
-        all_dimg = wfs.ImgSimulator.all_dimg_new()
+        all_dimg = wfs.ImgSimulator.all_dimg()
 
         # Display process
         plt.figure(1)
@@ -1226,10 +1094,143 @@ class _SlopifyMethods(object):
         return (oXSlope, oYSlope)
 
 
+class _RefImgReconMethods(object):
+    """
+    Reconstruct Reference Image for use in slope extractor
+    """
+
+    @staticmethod
+    def recon1(all_dimg, all_mask):
+        """
+        Reconstruct Ref Img by averaging image from all lensets.
+        Accounts for vignetting effect.
+        :param all_dimg:
+        :return:
+        """
+        ave = np.zeros(all_dimg[0, 0].shape)
+        for j in range(all_dimg.shape[0]):
+            for i in range(all_dimg.shape[1]):
+                ave = ave + all_dimg[j, i]
+
+        # correct peripheral
+        mask = np.zeros(all_dimg[0, 0].shape)
+        for j in range(all_mask.shape[0]):
+            for i in range(all_mask.shape[1]):
+                mask = mask + all_mask[j, i]
+
+        # divide!!
+        ave = ave / mask
+
+        return ave
+
+    @staticmethod
+    def recon2(all_dimg, all_mask):
+        """
+        Reconstruct Ref Img by averaging image from all lensets.
+        Accounts for vignetting effect.
+        :param all_dimg:
+        :return:
+        """
+        ave = np.zeros(all_dimg[0, 0].shape)
+        for j in range(all_dimg.shape[0]):
+            for i in range(all_dimg.shape[1]):
+                ave = ave + all_dimg[j, i]
+
+        # correct peripheral
+        mask = np.zeros(all_dimg[0, 0].shape)
+        for j in range(all_mask.shape[0]):
+            for i in range(all_mask.shape[1]):
+                mask = mask + all_mask[j, i]
+
+        # divide!!
+        ave = ave / mask
+
+        return ave
+
+
+class _CorrelationAlgorithms(object):
+    @staticmethod
+    def _SquaredDifferenceFunction(img, imgRef, xShift, yShift):
+        assert img.shape[0] < imgRef.shape[0]
+
+        # find the starting corner of imgRef
+        x1 = imgRef.shape[0] / 2.0 - img.shape[0] / 2.0 + int(xShift)
+        y1 = imgRef.shape[1] / 2.0 - img.shape[1] / 2.0 + int(yShift)
+
+        diff = (img - imgRef[y1:y1 + img.shape[1], x1:x1 + img.shape[0]]) ** 2
+
+        return np.sum(np.sum(diff))
+
+    @staticmethod
+    def SDF(img, imgRef, shiftLimit):
+
+        c_matrix = np.zeros((2 * shiftLimit + 1, 2 * shiftLimit + 1))
+
+        bias = c_matrix.shape[0] / 2
+
+        for j in range(c_matrix.shape[0]):
+            for i in range(c_matrix.shape[0]):
+                c_matrix[j, i] = _CorrelationAlgorithms._SquaredDifferenceFunction(img, imgRef, i - bias, j - bias)
+
+        return c_matrix
+
+
+class _InterpolationAlgorithms(object):
+    @staticmethod
+    def c_to_s_matrix(c_matrix):
+        min = np.unravel_index(c_matrix.argmin(), c_matrix.shape)
+        print min
+
+        if min[0] == 0 or min[0] == c_matrix.shape[0] \
+                or min[1] == 0 or min[1] == c_matrix.shape[1]:
+            raise RuntimeError("Minimum is found on an edge")
+
+        s_matrix = c_matrix[min[0] - 1:min[0] + 2, min[1] - 1:min[1] + 2]
+
+        return s_matrix
+
+    @staticmethod
+    def TwoDLeastSquare(s_matrix):
+        a2 = (np.average(s_matrix[:, 2]) - np.average(s_matrix[:, 0])) / 2.0
+        a3 = (np.average(s_matrix[:, 2]) - 2 * np.average(s_matrix[:, 1]) + np.average(s_matrix[:, 0])) / 2.0
+        a4 = (np.average(s_matrix[2, :]) - np.average(s_matrix[0, :])) / 2.0
+        a5 = (np.average(s_matrix[2, :]) - 2 * np.average(s_matrix[1, :]) + np.average(s_matrix[0, :])) / 2.0
+        a6 = (s_matrix[2, 2] - s_matrix[2, 0] - s_matrix[0, 2] + s_matrix[0, 0]) / 4.0
+
+        print (a2, a3, a4, a5, a6)
+
+        # 1D Minimum (I have no idea what this means)
+        # x_min = -a2/(2*a3)
+        # y_min = -a4/(2*a5)
+
+        # 2D Minimum
+        x_min = (2 * a2 * a5 - a4 * a6) / (a6 ** 2 - 4 * a3 * a5)
+        y_min = (2 * a3 * a4 - a2 * a6) / (a6 ** 2 - 4 * a3 * a5)
+
+        return (x_min, y_min)
+
+    @staticmethod
+    def TwoDQuadratic(s_matrix):
+        a2 = (s_matrix[1, 2] - s_matrix[1, 0]) / 2.0
+        a3 = (s_matrix[1, 2] - 2 * s_matrix[1, 1] + s_matrix[1, 0]) / 2.0
+        a4 = (s_matrix[2, 1] - s_matrix[0, 1]) / 2.0
+        a5 = (s_matrix[2, 1] - 2 * s_matrix[1, 1] + s_matrix[0, 1]) / 2.0
+        a6 = (s_matrix[2, 2] - s_matrix[2, 0] - s_matrix[0, 2] + s_matrix[0, 0]) / 4.0
+
+        # 1D Minimum (I have no idea what this means)
+        # x_min = -a2/(2*a3)
+        # y_min = -a4/(2*a5)
+
+        # 2D Minimum
+        x_min = (2 * a2 * a5 - a4 * a6) / (a6 ** 2 - 4 * a3 * a5)
+        y_min = (2 * a3 * a4 - a2 * a6) / (a6 ** 2 - 4 * a3 * a5)
+
+        return (x_min, y_min)
+
+
 if __name__ == '__main__':
     tel = Telescope(2.5)
     at = Atmosphere()
     at.create_default_screen(100, 2)
     wfs = WideFieldSHWFS(5000, 16, 128, at, tel)
     cProfile.run('SHWFS_Demonstrator.display_all_dimg(wfs)')
-    SHWFS_Demonstrator.display_all_dmap(wfs)
