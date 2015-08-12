@@ -166,5 +166,64 @@ def refImg_vs_height():
 
     plt.show()
 
+def dmap_intensity_vs_lenslet_size():
+        fig1 = plt.figure(1)
+        at = Atmosphere()
+        at.create_default_screen(1000,0)
+        plt.suptitle("Standard r_0 = 1.0m")
+
+        print "Generating WFS 1"
+        ax1 = plt.subplot(2,3,1)
+        tel1 = Telescope(1)
+        wfs1 = WideFieldSHWFS(0,16,128,at,tel1)
+        ax1.set_title(str(wfs1.conjugated_lenslet_size)+"m")
+        im1 = ax1.imshow(wfs1.ImgSimulator.dmap((0,0))[0])
+        plt.colorbar(im1)
+
+        print "Generating WFS 2"
+        ax2 = plt.subplot(2,3,2)
+        tel2 = Telescope(2)
+        wfs2 = WideFieldSHWFS(0,16,128,at,tel2)
+        ax2.set_title(str(wfs2.conjugated_lenslet_size)+"m")
+        im2 = ax2.imshow(wfs2.ImgSimulator.dmap((0,0))[0])
+        plt.colorbar(im2)
+
+        print "Generating WFS 3"
+        ax3 = plt.subplot(2,3,3)
+        tel3 = Telescope(4)
+        wfs3 = WideFieldSHWFS(0,16,128,at,tel3)
+        ax3.set_title(str(wfs3.conjugated_lenslet_size)+"m")
+        im3 = ax3.imshow(wfs3.ImgSimulator.dmap((0,0))[0])
+        plt.colorbar(im3)
+
+        print "Generating WFS 4"
+        ax4 = plt.subplot(2,3,4)
+        tel4 = Telescope(8)
+        wfs4 = WideFieldSHWFS(0,16,128,at,tel4)
+        ax4.set_title(str(wfs4.conjugated_lenslet_size)+"m")
+        im4 = ax4.imshow(wfs4.ImgSimulator.dmap((0,0))[0])
+        plt.colorbar(im4)
+
+        print "Generating WFS 5"
+        ax5 = plt.subplot(2,3,5)
+        tel5 = Telescope(16)
+        wfs5 = WideFieldSHWFS(0,16,128,at,tel5)
+        ax5.set_title(str(wfs5.conjugated_lenslet_size)+"m")
+        im5 = ax5.imshow(wfs5.ImgSimulator.dmap((0,0))[0])
+        plt.colorbar(im5)
+
+        print "Generating WFS 6"
+        ax6 = plt.subplot(2,3,6)
+        tel6 = Telescope(32)
+        wfs6 = WideFieldSHWFS(0,16,128,at,tel6)
+        ax6.set_title(str(wfs6.conjugated_lenslet_size)+"m")
+        im6 = ax6.imshow(wfs6.ImgSimulator.dmap((0,0))[0])
+        plt.colorbar(im6)
+
+        print "Done!"
+
+        plt.show()
+
+
 if __name__ == "__main__":
-    refImg_vs_height()
+    dmap_intensity_vs_lenslet_size()

@@ -45,6 +45,7 @@ class WideFieldSHWFS(object):
         # conjugated lenslet information
         self.conjugated_delta = meta_pupil_diameter / float(num_lenslet) / float(pixels_lenslet)  # [meters]
         self.conjugated_lenslet_size = self.pixels_lenslet * self.conjugated_delta  # [meters]
+        self.conjugated_lenslet_f = self.lenslet_f*(telescope.Mfactor)**2 # [meters]
 
         # relevant objects
         self.atmos = atmosphere
@@ -108,7 +109,7 @@ class WideFieldSHWFS(object):
 
         return scrn.phase_screen[y1:y2, x1:x2]
 
-    def _get_sensed_screen(self, scrn):
+    def _get_meta_pupil(self, scrn):
         size_of_WFS = self.num_lenslet * self.pixels_lenslet * self.conjugated_delta
         num_scrn_pixels = size_of_WFS / scrn.delta
         shapeX, shapeY = scrn.phase_screen.shape
@@ -259,10 +260,16 @@ class ImageSimulator(object):
     """
 
     def __init__(self, atmosphere, telescope, SH_WFS):
+
+        # Physical simulation objects
         self.atmos = atmosphere
         self.tel = telescope
         self.wfs = SH_WFS
+
+        # Silence warning for numpy floating point operations
         np.seterr(invalid='ignore')
+
+        # Initialize the test Image
         # get test image of solar granule
         # self.test_img = np.loadtxt(open('SunTesImage','rb'))
         IM = Image.open('SunGranule2.jpg', 'r').convert('L')
@@ -270,13 +277,13 @@ class ImageSimulator(object):
         truth_size = int(self.wfs.pixels_lenslet * (70.0 / 3600 * np.pi / 180) / self.tel.field_of_view)
         IM = IM.resize((truth_size, truth_size), Image.BICUBIC)
         self.test_img = np.array(IM)
+
+
         # self.test_img = self.test_img[:,:,0]
         # self.test_img = lena()
 
-        # Eager initialization of theta map
+        # Eager initialization of theta map / conjugated position map
         self.theta_map = self._get_theta_map()
-
-        # Eager initialization of conjugated position map
         self.c_pos_map = self._get_c_pos_map()
 
     def _get_lensletscreen(self, scrn, angle, c_lenslet_pos):
@@ -359,12 +366,11 @@ class ImageSimulator(object):
         :return: (x_shift,y_shift) in conjugate image plane # [meter]
         """
 
-        tilts = _TiltifyMethods.slopify1(stacked_phase)
+        (x_tilts,y_tilts) = _TiltifyMethods.tiltify1(stacked_phase,self.tel.wavelength, self.wfs.conjugated_lenslet_size)
 
-        #
-        (x_shift, y_shift) = tilts
+        r = self.wfs.conjugated_lenslet_size/(self.wfs.pixels_lenslet*self.wfs.conjugated_lenslet_f)
 
-        return (x_shift, y_shift)
+        return (x_tilts/r,y_tilts/r)
 
     def _index_to_c_pos(self, i, j):
         """
@@ -999,7 +1005,7 @@ class SHWFS_Demonstrator(object):
         slopes = np.empty((2, N, N))
         for j in range(N):
             for i in range(N):
-                oXSlope, oYSlope = _SlopifyMethods.slopify1(phasescreen[j * num:(j + 1) * num, i * num:(i + 1) * num])
+                oXSlope, oYSlope = _TiltifyMethods.tiltify1(phasescreen[j * num:(j + 1) * num, i * num:(i + 1) * num])
                 slopes[0, j, i] = oXSlope
                 slopes[1, j, i] = oYSlope
 
@@ -1011,7 +1017,7 @@ class SHWFS_Demonstrator(object):
         slopes = np.empty((2, N, N))
         for j in range(N):
             for i in range(N):
-                oXSlope, oYSlope = _SlopifyMethods.slopify1(phasescreen[j * num:(j + 1) * num, i * num:(i + 1) * num])
+                oXSlope, oYSlope = _TiltifyMethods.tiltify1(phasescreen[j * num:(j + 1) * num, i * num:(i + 1) * num])
                 slopes[0, j, i] = oXSlope
                 slopes[1, j, i] = oYSlope
         return slopes
@@ -1020,12 +1026,16 @@ class SHWFS_Demonstrator(object):
 class _TiltifyMethods(object):
     """
     This class is a collection of tiltify methods we experimented with.
-    By default, use slopify1
+
+    tiltify() fits x,y tilt values in radians to the sub phase screen.
+
+    By default, use tiltify1 (fastest)
     """
 
     @staticmethod
-    def slopify1(screen):
+    def tiltify1(screen, wavelength,conjugated_lenslet_size):
         """
+        Refer to diagram
         :return: G tilt # [radian tuple]
         """
         # Method 1 - Mean end to end difference
@@ -1033,14 +1043,17 @@ class _TiltifyMethods(object):
 
         x_tilt_acc = (screen[:, S - 1] - screen[:, 0]).sum()
         y_tilt_acc = (screen[S - 1, :] - screen[0, :]).sum()
-        oXSlope = x_tilt_acc / (S * S)
-        oYSlope = y_tilt_acc / (S * S)
 
-        slope = (oXSlope, oYSlope)
+        oXTilt = x_tilt_acc*wavelength/(2*np.pi*conjugated_lenslet_size)
+        oYTilt = y_tilt_acc*wavelength/(2*np.pi*conjugated_lenslet_size)
+
+
+        slope = (oXTilt, oYTilt)
+
         return slope
 
     @staticmethod
-    def slopify2(screen):
+    def tiltify2(screen):
         # Method 2 - Linear regression of mean
 
         # Get size of screen
@@ -1068,7 +1081,7 @@ class _TiltifyMethods(object):
         return (oXSlope, oYSlope)
 
     @staticmethod
-    def slopify3(screen):
+    def tiltify3(screen):
         # Method 3 - mean of linear regression
 
         # Get size of screen
@@ -1233,6 +1246,12 @@ class _InterpolationAlgorithms(object):
 if __name__ == '__main__':
     tel = Telescope(2.5)
     at = Atmosphere()
-    at.create_default_screen(100, 2)
-    wfs = WideFieldSHWFS(5000, 16, 128, at, tel)
-    cProfile.run('SHWFS_Demonstrator.display_all_dimg(wfs)')
+    at.create_screen(0.15,2048,0.01,20,0.01,200)
+    wfs = WideFieldSHWFS(50, 16, 128, at, tel)
+    # cProfile.run('SHWFS_Demonstrator.display_all_dimg(wfs)')
+    # SHWFS_Demonstrator.display_dmap(wfs,(0,0))
+    # plt.imshow(at.scrns[0].phase_screen)
+    # plt.colorbar()
+    # plt.show()
+    # print wfs.conjugated_lenslet_size
+    SHWFS_Demonstrator.display_all_dmap(wfs)

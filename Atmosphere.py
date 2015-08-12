@@ -1,9 +1,7 @@
 __author__ = 'tpl'
 import pickle
 import os
-
 import matplotlib.pyplot as plt
-
 from soapy import atmosphere
 
 
@@ -129,8 +127,61 @@ class Screen(object):
 
             return new_screen
 
+class PhaseScreenDemonstrator(object):
+    @staticmethod
+    def display_fried_param():
+        fig1 = plt.figure(1)
+
+        print "Generating Screen 1"
+        ax1 = plt.subplot(2,3,1)
+        sc1 = Screen(0.1,2048,0.01,20,0.01)
+        ax1.set_title("r_0=0.1")
+        im1 = ax1.imshow(sc1.phase_screen)
+        plt.colorbar(im1)
+
+        print "Generating Screen 2"
+        ax2 = plt.subplot(2,3,2)
+        sc2 = Screen(0.2,2048,0.01,20,0.01)
+        ax2.set_title("r_0=0.2")
+        im2 = ax2.imshow(sc2.phase_screen)
+        plt.colorbar(im2)
+
+        print "Generating Screen 3"
+        ax3 = plt.subplot(2,3,3)
+        sc3 = Screen(0.4,2048,0.01,20,0.01)
+        ax3.set_title("r_0=0.4")
+        im3 = ax3.imshow(sc3.phase_screen)
+        plt.colorbar(im3)
+
+        print "Generating Screen 4"
+        ax4 = plt.subplot(2,3,4)
+        sc4 = Screen(0.8,2048,0.01,20,0.01)
+        ax4.set_title("r_0=0.8")
+        im4 = ax4.imshow(sc4.phase_screen)
+        plt.colorbar(im4)
+
+        print "Generating Screen 5"
+        ax5 = plt.subplot(2,3,5)
+        sc5 = Screen(1.6,2048,0.01,20,0.01)
+        ax5.set_title("r_0=1.6")
+        im5 = ax5.imshow(sc5.phase_screen)
+        plt.colorbar(im5)
+
+        print "Generating Screen 6"
+        ax6 = plt.subplot(2,3,6)
+        sc6 = Screen(3.2,2048,0.01,20,0.01)
+        ax6.set_title("r_0=3.2")
+        im6 = ax6.imshow(sc6.phase_screen)
+        plt.colorbar(im6)
+
+        print "Done!"
+
+        plt.show()
+
+
 # TODO: input algorithms to create phase screens here in a class
 
 if __name__ == "__main__":
-    at = Atmosphere()
-    at.create_default_screen(0,0)
+    # at = Atmosphere()
+    # at.create_default_screen(0,0)
+    PhaseScreenDemonstrator.display_fried_param()
