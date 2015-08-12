@@ -5,5 +5,7 @@ This project aims to
 2. Test methods and algorithms for use in layer-oriented MCAO
 
 ## Usage
-At the moment, functions that demonstrate effects of WFS height conjugation are written in the "Evaluation.py" python module. Choose a function from that module to run and read the docstring explaining the principles behind the demonstration.
+1. Choose a function from "Evaluation.py" module to run. Docstring should explain the principles behind the demonstration
+2. Choose a function from SHWFSDemonstrator to run. 
+2. Choose a function from PhaseScreenDemonstrator to run. 
 

@@ -45,7 +45,7 @@ class WideFieldSHWFS(object):
         # conjugated lenslet information
         self.conjugated_delta = meta_pupil_diameter / float(num_lenslet) / float(pixels_lenslet)  # [meters]
         self.conjugated_lenslet_size = self.pixels_lenslet * self.conjugated_delta  # [meters]
-        self.conjugated_lenslet_f = self.lenslet_f*(telescope.Mfactor)**2 # [meters]
+        self.conjugated_lenslet_f = self.lenslet_f * (telescope.Mfactor) ** 2  # [meters]
 
         # relevant objects
         self.atmos = atmosphere
@@ -269,18 +269,8 @@ class ImageSimulator(object):
         # Silence warning for numpy floating point operations
         np.seterr(invalid='ignore')
 
-        # Initialize the test Image
-        # get test image of solar granule
-        # self.test_img = np.loadtxt(open('SunTesImage','rb'))
-        IM = Image.open('SunGranule2.jpg', 'r').convert('L')
-        # figure out size of true image
-        truth_size = int(self.wfs.pixels_lenslet * (70.0 / 3600 * np.pi / 180) / self.tel.field_of_view)
-        IM = IM.resize((truth_size, truth_size), Image.BICUBIC)
-        self.test_img = np.array(IM)
-
-
-        # self.test_img = self.test_img[:,:,0]
-        # self.test_img = lena()
+        # Get the test image
+        self.test_img = _TestImgGenerator.test_img2(self.wfs.pixels_lenslet, self.tel.field_of_view)
 
         # Eager initialization of theta map / conjugated position map
         self.theta_map = self._get_theta_map()
@@ -366,11 +356,12 @@ class ImageSimulator(object):
         :return: (x_shift,y_shift) in conjugate image plane # [meter]
         """
 
-        (x_tilts,y_tilts) = _TiltifyMethods.tiltify1(stacked_phase,self.tel.wavelength, self.wfs.conjugated_lenslet_size)
+        (x_tilts, y_tilts) = _TiltifyMethods.tiltify1(stacked_phase, self.tel.wavelength,
+                                                      self.wfs.conjugated_lenslet_size)
 
-        r = self.wfs.conjugated_lenslet_size/(self.wfs.pixels_lenslet*self.wfs.conjugated_lenslet_f)
+        r = self.wfs.conjugated_lenslet_size / (self.wfs.pixels_lenslet * self.wfs.conjugated_lenslet_f)
 
-        return (x_tilts/r,y_tilts/r)
+        return (x_tilts / r, y_tilts / r)
 
     def _index_to_c_pos(self, i, j):
         """
@@ -766,7 +757,8 @@ class ImageInterpreter(object):
     def all_measure(self):
         pass
 
-class SHWFS_Demonstrator(object):
+
+class SHWFSDemonstrator(object):
     """
     A static class containing methods to test, debug and demonstrate
     the operations of the wide field extended source SH WFS
@@ -911,7 +903,7 @@ class SHWFS_Demonstrator(object):
 
         ax2 = plt.subplot(132)
         ax2.set_title("Immediate")
-        im2 = ax2.imshow(SHWFS_Demonstrator.immediatecutslopeNrecon(screen))
+        im2 = ax2.imshow(SHWFSDemonstrator.immediatecutslopeNrecon(screen))
         plt.colorbar(im2)
 
         ax3 = plt.subplot(133)
@@ -1033,7 +1025,7 @@ class _TiltifyMethods(object):
     """
 
     @staticmethod
-    def tiltify1(screen, wavelength,conjugated_lenslet_size):
+    def tiltify1(screen, wavelength, conjugated_lenslet_size):
         """
         Refer to diagram
         :return: G tilt # [radian tuple]
@@ -1044,9 +1036,8 @@ class _TiltifyMethods(object):
         x_tilt_acc = (screen[:, S - 1] - screen[:, 0]).sum()
         y_tilt_acc = (screen[S - 1, :] - screen[0, :]).sum()
 
-        oXTilt = x_tilt_acc*wavelength/(2*np.pi*conjugated_lenslet_size)
-        oYTilt = y_tilt_acc*wavelength/(2*np.pi*conjugated_lenslet_size)
-
+        oXTilt = x_tilt_acc * wavelength / (2 * np.pi * conjugated_lenslet_size)
+        oYTilt = y_tilt_acc * wavelength / (2 * np.pi * conjugated_lenslet_size)
 
         slope = (oXTilt, oYTilt)
 
@@ -1107,6 +1098,26 @@ class _TiltifyMethods(object):
         oYSlope = cov.sum() / S
 
         return (oXSlope, oYSlope)
+
+
+class _TestImgGenerator(object):
+    @staticmethod
+    def test_img1():
+        return lena()
+
+    @staticmethod
+    def test_img2(pixels_lenslet, field_of_view):
+        IM = Image.open('SunGranule2.jpg', 'r').convert('L')
+        # figure out size of true image
+        truth_size = int(pixels_lenslet * (70.0 / 3600 * np.pi / 180) / field_of_view)
+        IM = IM.resize((truth_size, truth_size), Image.BICUBIC)
+        return np.array(IM)
+
+    @staticmethod
+    def test_img3():
+        # TODO: a method that adds noise and degrades the test image
+        # refer to Lofdahl's paper
+        pass
 
 
 class _RefImgReconMethods(object):
@@ -1246,12 +1257,12 @@ class _InterpolationAlgorithms(object):
 if __name__ == '__main__':
     tel = Telescope(2.5)
     at = Atmosphere()
-    at.create_screen(0.15,2048,0.01,20,0.01,200)
+    at.create_screen(0.15, 2048, 0.01, 20, 0.01, 200)
     wfs = WideFieldSHWFS(50, 16, 128, at, tel)
-    # cProfile.run('SHWFS_Demonstrator.display_all_dimg(wfs)')
-    # SHWFS_Demonstrator.display_dmap(wfs,(0,0))
+    # cProfile.run('SHWFSDemonstrator.display_all_dimg(wfs)')
+    # SHWFSDemonstrator.display_dmap(wfs,(0,0))
     # plt.imshow(at.scrns[0].phase_screen)
     # plt.colorbar()
     # plt.show()
     # print wfs.conjugated_lenslet_size
-    SHWFS_Demonstrator.display_all_dmap(wfs)
+    SHWFSDemonstrator.display_all_dmap(wfs)
