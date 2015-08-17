@@ -311,28 +311,30 @@ class SHWFSDemonstrator(object):
                 plt.subplot(wfs.num_lenslet, 2 * wfs.num_lenslet, j * 2 * wfs.num_lenslet + i + 1)
                 plt.axis('off')
                 plt.imshow(all_dmaps[j, i][0], vmin=asmin, vmax=asmax)
-                
-        # Find the min and max
-        # TODO: vectorize this operation
-        msmin = all_shifts[0,0][0].min()
-        msmax = all_shifts[0,0][0].max()
-        for i in range(wfs.num_lenslet):
-            for j in range(wfs.num_lenslet):
-                if msmin > all_shifts[j,i][0].min():
-                    msmin = all_shifts[j,i][0].min()
-                if msmax < all_shifts[j,i][0].max():
-                    msmax = all_shifts[j,i][0].max()
+
+        # Finding min and max of measured shifts
+        # msmin = all_shifts[0,:,:].min()
+        # msmax = all_shifts[0,:,:].max()
 
         plt.subplot(1,2,2)
-        for j in range(wfs.num_lenslet):
-            for i in range(wfs.num_lenslet):
-                plt.subplot(wfs.num_lenslet, 2 * wfs.num_lenslet, j * 2 * wfs.num_lenslet + i + 1 + wfs.num_lenslet)
-                plt.axis('off')
-                im = np.empty((2,2))
-                im.fill(all_shifts[j, i][0])
-                plt.imshow(im, vmin=msmin, vmax=msmax, interpolation='None')
+        plt.axis('off')
+        Vtake = np.vectorize(np.take)
+        im = Vtake(all_shifts,[0],axis=0) # take the x component of the shift
+        # plt.imshow(im, vmin=-1, vmax=1, interpolation='None')
+        plt.imshow(im, interpolation='None')
 
         plt.show()
+
+    @staticmethod
+    def dmap_vs_measured_shift(wfs,c_pos):
+        dmap = wfs.ImgSimulator.dmap(c_pos)
+        dimg = wfs.ImgSimulator.dimg(c_pos)
+        refImg = wfs.ImgInterpreter.get_ref_img()
+        shift = wfs.ImgInterpreter._measure_dimg_shifts(dimg, refImg)
+        realGlobalShift = dmap[0].mean()
+
+        print "Appied Shift = " + str(realGlobalShift)
+        print "Measured Shift = " + str(shift)
 
     @staticmethod
     def display_recon_N_screen(wfs):  ### TODO: fix broken methods
@@ -466,7 +468,8 @@ if __name__ == '__main__':
     wfs = WideFieldSHWFS(0, 16, 128, at, tel)
     # print wfs.conjugated_lenslet_size
     # print wfs.angular_res
-    SHWFSDemonstrator.actual_shifts_vs_measured_shifts(wfs)
+    # SHWFSDemonstrator.actual_shifts_vs_measured_shifts(wfs)
+    SHWFSDemonstrator.dmap_vs_measured_shift(wfs,(0,0))
     # SHWFSDemonstrator.display_all_dmap(wfs)
     # SHWFSDemonstrator.display_recon_N_screen(wfs)
     # surface = sio.loadmat('surface.mat')

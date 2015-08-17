@@ -85,10 +85,15 @@ class ImageInterpreter(object):
             shifts = _InterpolationAlgorithms.TwoDLeastSquare(s_matrix)
         except MinOnEdgeError as e :
             # TODO: Think - when failure occurs what value is good to return
-            xShift, yShift = 0, 0
-            shifts = np.array((xShift - c_matrix.shape[0] / 2, yShift - c_matrix.shape[1] / 2))
-            print "Dimg measurement failure occured"
+            xShift, yShift = 0.0, 0.0
+            # shifts = np.array((xShift - c_matrix.shape[0] / 2, yShift - c_matrix.shape[1] / 2))
+            shifts = np.array((xShift,yShift),'float64')
         return shifts
+
+    def get_ref_img(self):
+        all_dimg = self.ImgSimulator.all_dimg()
+        ref = _RefImgReconMethods.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
+        return ref
 
     def measure_all_shifts(self, all_dimg):
         ref = _RefImgReconMethods.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
@@ -101,6 +106,7 @@ class ImageInterpreter(object):
                 all_shifts[j, i] = np.array((xShift,yShift))
 
         sys.stdout.write(" Done!\n")
+        print("Failure rate: ", MinOnEdgeError.count, "/", jMax*iMax)
         return all_shifts
 
 
@@ -204,7 +210,6 @@ class _CorrelationAlgorithms(object):
         c_matrix = np.zeros((2 * shiftLimit + 1, 2 * shiftLimit + 1))
 
         bias = c_matrix.shape[0] / 2
-        print bias
         for j in range(c_matrix.shape[0]):
             for i in range(c_matrix.shape[0]):
                 c_matrix[j, i] = _CorrelationAlgorithms._SquaredDifferenceFunction(img, imgRef, i - bias, j - bias)
@@ -262,6 +267,8 @@ class _InterpolationAlgorithms(object):
         return (x_min, y_min)
 
 class MinOnEdgeError(RuntimeError):
+    count = 0
     def __init__(self,msg, minLocation):
         self.msg = msg
         self.min = minLocation
+        MinOnEdgeError.count += 1
