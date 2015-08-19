@@ -526,17 +526,5 @@ class SHWFSDemonstrator(object):
 if __name__ == '__main__':
     tel = Telescope(2.5)
     at = Atmosphere()
-    # at.create_screen(0.20, 2048, 0.01, 20, 0.01, 0)
-    # at.save_screens()
-    at.load_screen(0.20, 2048, 0.01, 20, 0.01, 0, 0)
-    #
+    at.create_default_screen(0,0.15)
     wfs = WideFieldSHWFS(0, 16, 128, at, tel)
-    # print wfs.conjugated_lenslet_size
-    # print wfs.angular_res
-    # SHWFSDemonstrator.actual_shifts_vs_measured_shifts(wfs)
-    # SHWFSDemonstrator.dmap_vs_measured_shift(wfs,(0,0))
-    # SHWFSDemonstrator.display_all_dmap(wfs)
-    # SHWFSDemonstrator.display_recon_N_screen(wfs)
-    SHWFSDemonstrator.compare_recon_methods(wfs)
-    # wfs.runWFS()
-    # SHWFSDemonstrator.dmap_vs_measured_shift2(wfs)
