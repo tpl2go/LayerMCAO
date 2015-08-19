@@ -307,7 +307,7 @@ class ImageSimulator(object):
         # Iterate over lenslet index
         for j in range(self.wfs.num_lenslet):
             for i in range(self.wfs.num_lenslet):
-                sys.stdout.write('\r' + "Now computing dmap index " + str((i, j)))
+                sys.stdout.write('\r' + "Now computing dmap index " + str((j, i)))
                 c_lenslet_pos = self._index_to_c_pos(i, j)
                 distortion = self.dmap(c_lenslet_pos)
                 output[j, i] = distortion
@@ -381,7 +381,7 @@ class ImageSimulator(object):
         # Convert
         for j in range(self.wfs.num_lenslet):
             for i in range(self.wfs.num_lenslet):
-                sys.stdout.write('\r' + "Now computing dimg index " + str((i, j)))
+                sys.stdout.write('\r' + "Now computing dimg index " + str((j, i)))
                 c_pos = self._index_to_c_pos(i, j)
                 dimg = self.dimg(c_pos)
                 output[j, i] = dimg

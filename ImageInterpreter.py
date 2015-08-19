@@ -2,6 +2,7 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 # [Software Design] I am resisting the implementation of an abstract ImageInterpreter / ImageSimulator class because
 # I do not want the contracts to be set in stone. This code is still highly developmental and fluid. And the fact
 # that it is written in python means that it is still a highly dynamic and rapidly evolving piece of code.
@@ -58,7 +59,12 @@ class ImageInterpreter(object):
         return slopes
 
     def all_dimg_to_shifts(self, all_dimg):
-        return self.measure_all_shifts(all_dimg)
+        """
+        standard function called by WFS
+        :param all_dimg:
+        """
+        # return self.measure_all_shifts(all_dimg)
+        return self.chain_measure(all_dimg)
 
     def compare_refImg(self, dimg, recon_dimg):
         plt.figure(1)
@@ -80,14 +86,16 @@ class ImageInterpreter(object):
 
     def _measure_dimg_shifts(self, dimg, refImg):
         c_matrix = _CorrelationAlgorithms.SDF(dimg, refImg, 16)
+        (ymin, xmin) = np.unravel_index(c_matrix.argmin(), c_matrix.shape)
+        xmin, ymin = (xmin - c_matrix.shape[0] / 2, ymin - c_matrix.shape[1] / 2)
         try:
             s_matrix = _InterpolationAlgorithms.c_to_s_matrix(c_matrix)
-            shifts = _InterpolationAlgorithms.TwoDLeastSquare(s_matrix)
-        except MinOnEdgeError as e :
+            xfine, yfine = _InterpolationAlgorithms.TwoDLeastSquare(s_matrix)
+            shifts = np.array((xmin + xfine, ymin + yfine), 'float64')
+        except MinOnEdgeError as e:
             # TODO: Think - when failure occurs what value is good to return
             xShift, yShift = 0.0, 0.0
-            # shifts = np.array((xShift - c_matrix.shape[0] / 2, yShift - c_matrix.shape[1] / 2))
-            shifts = np.array((xShift,yShift),'float64')
+            shifts = np.array((xShift, yShift), 'float64')
         return shifts
 
     def get_ref_img(self):
@@ -96,18 +104,139 @@ class ImageInterpreter(object):
         return ref
 
     def measure_all_shifts(self, all_dimg):
-        ref = _RefImgReconMethods.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
+        # ref = _RefImgReconMethods.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
+        ref = self.ImgSimulator.get_test_img()
         iMax, jMax = all_dimg.shape
-        all_shifts = np.empty((jMax, iMax),np.ndarray)
+        all_shifts = np.empty((jMax, iMax), np.ndarray)
         for j in range(jMax):
             for i in range(iMax):
-                sys.stdout.write('\r' + "Now measuring dimg index " + str((i, j)))
+                sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
                 (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
-                all_shifts[j, i] = np.array((xShift,yShift))
+                all_shifts[j, i] = np.array((xShift, yShift))
 
         sys.stdout.write(" Done!\n")
-        print("Failure rate: ", MinOnEdgeError.count, "/", jMax*iMax)
+        print("Failure rate: ", MinOnEdgeError.count, "/", jMax * iMax)
         return all_shifts
+
+    def chain_measure(self, all_dimg):
+        # Center Radiation Tracer
+        jCenter, iCenter = (all_dimg.shape[0] - 1) / 2, (all_dimg.shape[1] - 1) / 2
+
+        limit = all_dimg.shape[0] - jCenter - 1
+        all_shifts = np.empty(all_dimg.shape, np.ndarray)
+
+        all_shifts[jCenter, iCenter] = np.array((0., 0.))
+
+        i = iCenter
+        j = jCenter
+
+        for layer in range(limit - 1):
+            # -1 because last loop brought outside for-loop
+            # Down
+            for plus in range(2 * layer + 1):
+                j += 1
+                sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
+                print ""
+                jpar, ipar = self._get_parent_index(i, j, iCenter, jCenter)
+                ref = all_dimg[jpar, ipar]
+                (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
+                xShift += all_shifts[jpar, ipar][0]
+                yShift += all_shifts[jpar, ipar][1]
+                all_shifts[j, i] = np.array((xShift, yShift))
+            # Right
+            for plus in range(2 * layer + 1):
+                i += 1
+                sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
+                print ""
+                jpar, ipar = self._get_parent_index(i, j, iCenter, jCenter)
+                ref = all_dimg[jpar, ipar]
+                (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
+                xShift += all_shifts[jpar, ipar][0]
+                yShift += all_shifts[jpar, ipar][1]
+                all_shifts[j, i] = np.array((xShift, yShift))
+            # Up
+            for minus in range(2 * layer + 2):
+                j -= 1
+                sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
+                print ""
+                jpar, ipar = self._get_parent_index(i, j, iCenter, jCenter)
+                ref = all_dimg[jpar, ipar]
+                (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
+                xShift += all_shifts[jpar, ipar][0]
+                yShift += all_shifts[jpar, ipar][1]
+                all_shifts[j, i] = np.array((xShift, yShift))
+                # Left
+            for minus in range(2 * layer + 2):
+                i -= 1
+                sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
+                print ""
+                jpar, ipar = self._get_parent_index(i, j, iCenter, jCenter)
+                ref = all_dimg[jpar, ipar]
+                (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
+                xShift += all_shifts[jpar, ipar][0]
+                yShift += all_shifts[jpar, ipar][1]
+                all_shifts[j, i] = np.array((xShift, yShift))
+
+        # FINAL LAYER
+
+        # Down
+        for plus in range(2 * limit - 1):
+            j += 1
+            sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
+            print ""
+            jpar, ipar = self._get_parent_index(i, j, iCenter, jCenter)
+            ref = all_dimg[jpar, ipar]
+            (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
+            xShift += all_shifts[jpar, ipar][0]
+            yShift += all_shifts[jpar, ipar][1]
+            all_shifts[j, i] = np.array((xShift, yShift))
+        # Right
+        for plus in range(2 * limit - 1):
+            i += 1
+            sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
+            print ""
+            jpar, ipar = self._get_parent_index(i, j, iCenter, jCenter)
+            ref = all_dimg[jpar, ipar]
+            (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
+            xShift += all_shifts[jpar, ipar][0]
+            yShift += all_shifts[jpar, ipar][1]
+            all_shifts[j, i] = np.array((xShift, yShift))
+        # Up
+        for minus in range(2 * limit - 1):
+            # -1 because terminating
+            j -= 1
+            sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
+            print ""
+            jpar, ipar = self._get_parent_index(i, j, iCenter, jCenter)
+            ref = all_dimg[jpar, ipar]
+            (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
+            xShift += all_shifts[jpar, ipar][0]
+            yShift += all_shifts[jpar, ipar][1]
+            all_shifts[j, i] = np.array((xShift, yShift))
+
+        sys.stdout.write(" Done!\n")
+        print("Failure rate: ", MinOnEdgeError.get_failure(), "/", all_dimg.shape[0] * all_dimg.shape[1])
+        return all_shifts
+
+    def _get_parent_index(self, i, j, iCenter, jCenter):
+        xDist = i - iCenter
+        yDist = j - jCenter
+
+        ipar = i
+        jpar = j
+
+        if abs(xDist) >= abs(yDist):
+            if xDist > 0:
+                ipar = ipar - 1
+            else:
+                ipar = ipar + 1
+        if abs(yDist) >= abs(xDist):
+            if yDist > 0:
+                jpar = jpar - 1
+            else:
+                jpar = jpar + 1
+
+        return (jpar, ipar)
 
 
 class _RefImgReconMethods(object):
@@ -218,13 +347,18 @@ class _CorrelationAlgorithms(object):
 
 
 class _InterpolationAlgorithms(object):
+    """
+    A collection of algorithms to fine-tune the measured shifts to subpixel accuracy
+    """
+
     @staticmethod
-    def c_to_s_matrix(c_matrix):
-        min = np.unravel_index(c_matrix.argmin(), c_matrix.shape)
+    def c_to_s_matrix(c_matrix, min=None):
+        if min == None:
+            min = np.unravel_index(c_matrix.argmin(), c_matrix.shape)
 
         if min[0] == 0 or min[0] == c_matrix.shape[0] - 1 \
                 or min[1] == 0 or min[1] == c_matrix.shape[1] - 1:
-            raise MinOnEdgeError("Minimum is found on an edge",min)
+            raise MinOnEdgeError("Minimum is found on an edge", min)
 
         s_matrix = c_matrix[min[0] - 1:min[0] + 2, min[1] - 1:min[1] + 2]
 
@@ -266,9 +400,22 @@ class _InterpolationAlgorithms(object):
 
         return (x_min, y_min)
 
+
 class MinOnEdgeError(RuntimeError):
     count = 0
-    def __init__(self,msg, minLocation):
+
+    def __init__(self, msg, minLocation):
         self.msg = msg
         self.min = minLocation
         MinOnEdgeError.count += 1
+
+    @staticmethod
+    def print_failure():
+        print MinOnEdgeError.count
+        MinOnEdgeError.count = 0
+
+    @staticmethod
+    def get_failure():
+        output = MinOnEdgeError.count
+        MinOnEdgeError.count = 0
+        return output

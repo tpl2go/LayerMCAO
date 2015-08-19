@@ -35,7 +35,6 @@ class WideFieldSHWFS(object):
         self.conjugated_size = telescope.pupil_diameter + telescope.field_of_view * height  # [meters]
 
         # Lenslet attributes (Conjugated)
-        self.conjugated_delta = self.conjugated_size / float(num_lenslet) / float(pixels_lenslet)  # [meters]
         self.conjugated_lenslet_size = self.conjugated_size / float(num_lenslet)  # [meters]
 
         # Lenslet attributes (Physical)
@@ -45,6 +44,7 @@ class WideFieldSHWFS(object):
         # Detector attributes
         ### Angular resolution valid for small angles only
         self.angular_res = telescope.field_of_view / pixels_lenslet  # [rad/pixel]
+        self.conjugated_delta = self.conjugated_size / float(num_lenslet) / float(pixels_lenslet)  # [meters]
 
         # Relevant objects
         self.atmos = atmosphere
@@ -54,6 +54,25 @@ class WideFieldSHWFS(object):
         ### Strategy pattern for custom ImageSimulation / ImageInterpretor algorithm
         self.ImgSimulator = ImageSimulator(atmosphere, telescope, self)
         self.ImgInterpreter = ImageInterpreter(self.ImgSimulator)
+
+    def print_attributes(self):
+        print "WFS ATTRIBUTES"
+        print "Conjugated height:\t" + str(self.conjugated_height)
+        print "Number of lenslets:\t" + str(self.num_lenslet)
+        print "Number of pixels per lenslet:\t" + str(self.pixels_lenslet)
+        print "Size of conjugated WFS:\t" + str(self.conjugated_size)
+
+        print ""
+
+        print "LENSLET ATTRIBUTES"
+        print "Size of conjugate lenslet:\t" + str(self.conjugated_lenslet_size)
+        print "Size of physical lenslet:\t" + str(self.lenslet_size)
+
+        print ""
+
+        print "DETECTOR ATTRIBUTES"
+        print "Angular resolution of pixel:\t" + str(self.angular_res)
+        print "Size of conjugate pixel:\t" + str(self.conjugated_delta)
 
     def _reconstruct_WF(self, shifts):
         """
@@ -66,7 +85,10 @@ class WideFieldSHWFS(object):
         """
         tilts = self._shifts_to_tilts(shifts)
         slopes = self._tilts_to_gradient(tilts)
-        surface = ReconMethods.LeastSquare(slopes[0], slopes[1])
+        Vtake = np.vectorize(np.take)
+        xSlopes = Vtake(slopes,[0],axis=0)
+        ySlopes = Vtake(slopes,[1],axis=0)
+        surface = ReconMethods.LeastSquare(xSlopes, ySlopes)
         return surface
 
     def _shifts_to_tilts(self,shifts):
@@ -74,7 +96,8 @@ class WideFieldSHWFS(object):
         return shifts*self.angular_res
 
     def _tilts_to_gradient(self,tilts):
-        return np.tan(tilts)
+        Vtan = np.vectorize(np.tan,otypes=[np.ndarray])
+        return Vtan(tilts)
 
     def _get_metascreen(self, scrn):
         """
@@ -331,17 +354,34 @@ class SHWFSDemonstrator(object):
         dimg = wfs.ImgSimulator.dimg(c_pos)
         refImg = wfs.ImgInterpreter.get_ref_img()
         shift = wfs.ImgInterpreter._measure_dimg_shifts(dimg, refImg)
-        realGlobalShift = dmap[0].mean()
+        xglobal = dmap[0].mean()
+        yglobal = dmap[1].mean()
 
-        print "Appied Shift = " + str(realGlobalShift)
+        print "Appied Shift = " + str((xglobal, yglobal))
         print "Measured Shift = " + str(shift)
+
+        plt.imshow(dmap[0])
+        plt.show()
+
+    @staticmethod
+    def dmap_vs_measured_shift2(wfs):
+        shifts = wfs.runWFS()
+        shift = shifts[1,1]
+        dmap = wfs.ImgSimulator.dmap(wfs.ImgSimulator._index_to_c_pos(1,1))
+        xglobal = dmap[0].mean()
+        yglobal = dmap[1].mean()
+
+        print "Appied Shift = " + str((xglobal, yglobal))
+        print "Measured Shift = " + str(shift)
+
+        plt.imshow(dmap[0])
+        plt.show()
 
     @staticmethod
     def display_recon_N_screen(wfs):  ### TODO: fix broken methods
         slopes = wfs.runWFS()
         screen = wfs._get_metascreen(wfs.atmos.scrns[0])
         sensed = wfs._reconstruct_WF(slopes)
-        print sensed
         plt.figure(1)
 
         ax1 = plt.subplot(131)
@@ -358,6 +398,31 @@ class SHWFSDemonstrator(object):
         ax3 = plt.subplot(133)
         ax3.set_title("Reconstructed")
         im3 = ax3.imshow(sensed)
+        plt.colorbar(im3)
+
+        plt.show()
+
+    @staticmethod
+    def compare_recon_methods(wfs):
+        screen = wfs._get_metascreen(wfs.atmos.scrns[0])
+        all_dimg = wfs.ImgSimulator.all_dimg()
+        slopes1 = wfs.ImgInterpreter.measure_all_shifts(all_dimg)
+        slopes2 = wfs.ImgInterpreter.chain_measure(all_dimg)
+        plt.figure(1)
+
+        ax1 = plt.subplot(131)
+        ax1.set_title("True phase scrn")
+        im1 = ax1.imshow(screen)
+        plt.colorbar(im1)
+
+        ax2 = plt.subplot(132)
+        ax2.set_title("Spatially averaged RefImg")
+        im2 = ax2.imshow(wfs._reconstruct_WF(slopes1))
+        plt.colorbar(im2)
+
+        ax3 = plt.subplot(133)
+        ax3.set_title("Adjacent RefImg")
+        im3 = ax3.imshow(wfs._reconstruct_WF(slopes2))
         plt.colorbar(im3)
 
         plt.show()
@@ -469,10 +534,9 @@ if __name__ == '__main__':
     # print wfs.conjugated_lenslet_size
     # print wfs.angular_res
     # SHWFSDemonstrator.actual_shifts_vs_measured_shifts(wfs)
-    SHWFSDemonstrator.dmap_vs_measured_shift(wfs,(0,0))
+    # SHWFSDemonstrator.dmap_vs_measured_shift(wfs,(0,0))
     # SHWFSDemonstrator.display_all_dmap(wfs)
     # SHWFSDemonstrator.display_recon_N_screen(wfs)
-    # surface = sio.loadmat('surface.mat')
-    # surface = surface['surface']
-    # plt.imshow(surface,interpolation='None')
-    # plt.show()
+    SHWFSDemonstrator.compare_recon_methods(wfs)
+    # wfs.runWFS()
+    # SHWFSDemonstrator.dmap_vs_measured_shift2(wfs)
