@@ -18,7 +18,7 @@ be a bundle of data
 2. Attribute lookup (the dot) is also slow in python
 
 So instead, I maintain a collection of angles associated with each WFS detector pixel. (It was initially a function
-but it's frequent call means that memoizing the  Lenslet positions are generated
+but it's frequent call means that memoization / eager initialization is better) Lenslet positions are generated
 on demand from a function
 
 ## Why did you implement a ScrnLib folder?
@@ -28,7 +28,10 @@ screen generation methods saves to ScrnLib folder and which doesn't
 
 ## When to use np.vectorize and when to use a double for-loop?
 I spent quite a bit of effort to speed up the code and to be honest I still don't really know. At the moment I am 
-abiding by the principle of using a 
+using a for-loop for the lowest level function and vectorizing all the functions that stacks above. I suspect 
+that optimization has something to do with minimizing the number for function calls, which is slow in python.
+
+
 
 
 
