@@ -1,0 +1,38 @@
+# Frequently Asked Questions
+##Why did you choose a functional style of programming over an object-oriented approach?
+1. According to http://stackoverflow.com/questions/2078978/functional-programming-vs-object-oriented-programming,
+programmers are advised that if a code base is likely to evolve by addition of features instead of
+of objects, then a functional implementation might be better than an object-oriented implementation.
+2. Most of my objects do not inherit from each other. There is little code-sharing benefit to be gain from OOP
+3. LayerAO only has a few items to model, but may have many physical and geometric effects to take into account.
+Implementing each effect as functions that stack on top of each other makes code that is easier to debug
+
+Still, I do implement objects and classes to exploit OOP's encapsulation and modularity features. But as much as
+I can, within the simulation codes I try to program in a functional way.
+
+## Why didn't you implement lenslet objects?
+1. Objects are useful when they bundle data together with the functions that operate on those data. In the case of
+lenslet objects, there are no functions which I can meaningfully bundle with them. Functions that generate the
+distorted image require most of its information from outside the lenslet object. At most, a lenslet object will
+be a bundle of data
+2. Attribute lookup (the dot) is also slow in python
+
+So instead, I maintain a collection of angles associated with each WFS detector pixel. (It was initially a function
+but it's frequent call means that memoization / eager initialization is better) Lenslet positions are generated
+on demand from a function
+
+## Why did you implement a ScrnLib folder?
+I needed a consistent AO setup and initial condition to test and debug some algorithms. This means using the 
+same phase screen each time LayerMCAO runs. I am still thinking of an friendly interface that indicates which
+screen generation methods saves to ScrnLib folder and which doesn't
+
+## When to use np.vectorize and when to use a double for-loop?
+I spent quite a bit of effort to speed up the code and to be honest I still don't really know. At the moment I am 
+using a for-loop for the lowest level function and vectorizing all the functions that stacks above. I suspect 
+that optimization has something to do with minimizing the number for function calls, which is slow in python.
+
+
+
+
+
+

@@ -63,8 +63,8 @@ class ImageInterpreter(object):
         standard function called by WFS
         :param all_dimg:
         """
-        # return self.measure_all_shifts(all_dimg)
-        return self.chain_measure(all_dimg)
+        return self.average_measure(all_dimg)
+        # return self.spiral_measure(all_dimg)
 
     def compare_refImg(self, dimg, recon_dimg):
         plt.figure(1)
@@ -85,6 +85,17 @@ class ImageInterpreter(object):
         plt.show()
 
     def _measure_dimg_shifts(self, dimg, refImg):
+        """
+        Measures image shift of a lenslet image
+
+        Template Algorithm:
+            Using a correlation algorithm, try every integer shift from -16 to 16.
+            Results are stored in a c_matrix
+            Index of min value in c_matrix is our
+        :param dimg: lenslet image whose shift from refImg we are measuring
+        :param refImg: reference image
+        :return: x, y shift # [ndarray] [pixel]
+        """
         c_matrix = _CorrelationAlgorithms.SDF(dimg, refImg, 16)
         (ymin, xmin) = np.unravel_index(c_matrix.argmin(), c_matrix.shape)
         xmin, ymin = (xmin - c_matrix.shape[0] / 2, ymin - c_matrix.shape[1] / 2)
@@ -99,13 +110,20 @@ class ImageInterpreter(object):
         return shifts
 
     def get_ref_img(self):
+        """
+        Default method to recontruct reference image
+        """
+
         all_dimg = self.ImgSimulator.all_dimg()
-        ref = _RefImgReconMethods.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
+        ref = _RefImgRecon.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
         return ref
 
-    def measure_all_shifts(self, all_dimg):
-        # ref = _RefImgReconMethods.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
-        ref = self.ImgSimulator.get_test_img()
+    def average_measure(self, all_dimg):
+        """
+        Measures image shift in all lenslet images.
+        Uses average image from all lenslets as reference image
+        """
+        ref = _RefImgRecon.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
         iMax, jMax = all_dimg.shape
         all_shifts = np.empty((jMax, iMax), np.ndarray)
         for j in range(jMax):
@@ -118,7 +136,12 @@ class ImageInterpreter(object):
         print("Failure rate: ", MinOnEdgeError.count, "/", jMax * iMax)
         return all_shifts
 
-    def chain_measure(self, all_dimg):
+    def spiral_measure(self, all_dimg):
+        """
+        Measures image shift in all lenslet images.
+        Uses neighbouring lenslet image on "inner ring" as reference image
+        Measure middle lenslet first and moves out in a spiral
+        """
         # Center Radiation Tracer
         jCenter, iCenter = (all_dimg.shape[0] - 1) / 2, (all_dimg.shape[1] - 1) / 2
 
@@ -137,7 +160,7 @@ class ImageInterpreter(object):
                 j += 1
                 sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
                 print ""
-                jpar, ipar = self._get_parent_index(i, j, iCenter, jCenter)
+                jpar, ipar = _RefImgRecon._get_parent_index_spiral(i, j, iCenter, jCenter)
                 ref = all_dimg[jpar, ipar]
                 (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
                 xShift += all_shifts[jpar, ipar][0]
@@ -148,7 +171,7 @@ class ImageInterpreter(object):
                 i += 1
                 sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
                 print ""
-                jpar, ipar = self._get_parent_index(i, j, iCenter, jCenter)
+                jpar, ipar = _RefImgRecon._get_parent_index_spiral(i, j, iCenter, jCenter)
                 ref = all_dimg[jpar, ipar]
                 (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
                 xShift += all_shifts[jpar, ipar][0]
@@ -159,7 +182,7 @@ class ImageInterpreter(object):
                 j -= 1
                 sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
                 print ""
-                jpar, ipar = self._get_parent_index(i, j, iCenter, jCenter)
+                jpar, ipar = _RefImgRecon._get_parent_index_spiral(i, j, iCenter, jCenter)
                 ref = all_dimg[jpar, ipar]
                 (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
                 xShift += all_shifts[jpar, ipar][0]
@@ -170,7 +193,7 @@ class ImageInterpreter(object):
                 i -= 1
                 sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
                 print ""
-                jpar, ipar = self._get_parent_index(i, j, iCenter, jCenter)
+                jpar, ipar = _RefImgRecon._get_parent_index_spiral(i, j, iCenter, jCenter)
                 ref = all_dimg[jpar, ipar]
                 (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
                 xShift += all_shifts[jpar, ipar][0]
@@ -184,7 +207,7 @@ class ImageInterpreter(object):
             j += 1
             sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
             print ""
-            jpar, ipar = self._get_parent_index(i, j, iCenter, jCenter)
+            jpar, ipar = _RefImgRecon._get_parent_index_spiral(i, j, iCenter, jCenter)
             ref = all_dimg[jpar, ipar]
             (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
             xShift += all_shifts[jpar, ipar][0]
@@ -195,7 +218,7 @@ class ImageInterpreter(object):
             i += 1
             sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
             print ""
-            jpar, ipar = self._get_parent_index(i, j, iCenter, jCenter)
+            jpar, ipar = _RefImgRecon._get_parent_index_spiral(i, j, iCenter, jCenter)
             ref = all_dimg[jpar, ipar]
             (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
             xShift += all_shifts[jpar, ipar][0]
@@ -207,7 +230,7 @@ class ImageInterpreter(object):
             j -= 1
             sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
             print ""
-            jpar, ipar = self._get_parent_index(i, j, iCenter, jCenter)
+            jpar, ipar = _RefImgRecon._get_parent_index_spiral(i, j, iCenter, jCenter)
             ref = all_dimg[jpar, ipar]
             (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
             xShift += all_shifts[jpar, ipar][0]
@@ -218,30 +241,10 @@ class ImageInterpreter(object):
         print("Failure rate: ", MinOnEdgeError.get_failure(), "/", all_dimg.shape[0] * all_dimg.shape[1])
         return all_shifts
 
-    def _get_parent_index(self, i, j, iCenter, jCenter):
-        xDist = i - iCenter
-        yDist = j - jCenter
 
-        ipar = i
-        jpar = j
-
-        if abs(xDist) >= abs(yDist):
-            if xDist > 0:
-                ipar = ipar - 1
-            else:
-                ipar = ipar + 1
-        if abs(yDist) >= abs(xDist):
-            if yDist > 0:
-                jpar = jpar - 1
-            else:
-                jpar = jpar + 1
-
-        return (jpar, ipar)
-
-
-class _RefImgReconMethods(object):
+class _RefImgRecon(object):
     """
-    Reconstruct Reference Image for use in slope extractor
+    Reconstruct Reference Image for use in slope interpreter
     """
 
     @staticmethod
@@ -268,35 +271,35 @@ class _RefImgReconMethods(object):
 
         return ave
 
+    @staticmethod
+    def _get_parent_index_spiral(i, j, iCenter, jCenter):
+        xDist = i - iCenter
+        yDist = j - jCenter
+
+        ipar = i
+        jpar = j
+
+        if abs(xDist) >= abs(yDist):
+            if xDist > 0:
+                ipar = ipar - 1
+            else:
+                ipar = ipar + 1
+        if abs(yDist) >= abs(xDist):
+            if yDist > 0:
+                jpar = jpar - 1
+            else:
+                jpar = jpar + 1
+
+        return jpar, ipar
+
 
 class _CorrelationAlgorithms(object):
     @staticmethod
     def _SquaredDifferenceFunction(img, imgRef, xShift, yShift):
-        # if img.shape[0] + xShift <= imgRef.shape[0]:
-        #     # find the starting corner of imgRef
-        #     x1 = imgRef.shape[0] / 2.0 - img.shape[0] / 2.0 + int(xShift)
-        #     y1 = imgRef.shape[1] / 2.0 - img.shape[1] / 2.0 + int(yShift)
-        #
-        #     diff = (img - imgRef[y1:y1 + img.shape[1], x1:x1 + img.shape[0]]) ** 2
-        #     score = np.sum(np.sum(diff)) / (img.shape[0]*img.shape[1])
-        # elif :
-        #     x1t = 0
-        #     x2t = img.shape[0] - xShift
-        #     y1t = 0
-        #     y2t = img.shape[1] - yShift
-        #     x1r = xShift
-        #     x2r = imgRef.shape[0]
-        #     y1r = yShift
-        #     y2r = imgRef.shape[1]
-        #     if xShift<0:
-        #         # swap x
-        #
-        #     if yShift<0:
-        #         x2t = img.shape[0]
-        #         x1r = 0
-        #     diff = img[y1t:y2t,x1t:x2t] - imgRef[y1r:y2r,x1r:x2r]
-
+        # TODO: implement case where img and imgRef are of different shape
         assert img.shape == imgRef.shape
+
+        # Default values (xShift and yShift are positive)
         x1t = 0
         x2t = img.shape[0] - xShift
         y1t = 0
@@ -305,23 +308,16 @@ class _CorrelationAlgorithms(object):
         x2r = imgRef.shape[0]
         y1r = yShift
         y2r = imgRef.shape[1]
-        if xShift < 0:
-            # # swap x
-            # tmp1, tmp2 = x1t,x2t
-            # x1t, x2t = x1r, x2r
-            # x1r, x2r = -tmp1, tmp2
 
+        # in case xShift is negative
+        if xShift < 0:
             x1t = -xShift
             x2t = img.shape[0]
             x1r = 0
             x2r = imgRef.shape[0] + xShift
 
+        # in case yShift is negative
         if yShift < 0:
-            # # swap y
-            # tmp1, tmp2 = y1t,y2t
-            # y1t, y2t = y1r, y2r
-            # y1r, y2r = -tmp1, tmp2
-
             y1t = -yShift
             y2t = img.shape[1]
             y1r = 0
@@ -335,7 +331,13 @@ class _CorrelationAlgorithms(object):
 
     @staticmethod
     def SDF(img, imgRef, shiftLimit):
+        """
+        c-matrix constructor using Squared Difference Function
+        Tries every x,y integer shift from -16 to 16.
+        Results are stored in a c_matrix
 
+        """
+        # initialize c_matrix
         c_matrix = np.zeros((2 * shiftLimit + 1, 2 * shiftLimit + 1))
 
         bias = c_matrix.shape[0] / 2
@@ -348,7 +350,7 @@ class _CorrelationAlgorithms(object):
 
 class _InterpolationAlgorithms(object):
     """
-    A collection of algorithms to fine-tune the measured shifts to subpixel accuracy
+    A collection of algorithms to fine-tune measured shifts to subpixel accuracy
     """
 
     @staticmethod

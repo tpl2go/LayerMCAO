@@ -10,7 +10,6 @@ import scipy.io as sio
 
 
 class WideFieldSHWFS(object):
-
     def __init__(self, height, num_lenslet, pixels_lenslet, atmosphere, telescope):
         """
         :param height: Conjugated h/eight of the WFS [meters]
@@ -81,16 +80,16 @@ class WideFieldSHWFS(object):
 
         # Extract xSlope and ySlope from nested ndarray
         Vtake = np.vectorize(np.take)
-        xSlopes = Vtake(slopes,[0],axis=0) # [radians/meter]
-        ySlopes = Vtake(slopes,[1],axis=0) # [radians/meter]
+        xSlopes = Vtake(slopes, [0], axis=0)  # [radians/meter]
+        ySlopes = Vtake(slopes, [1], axis=0)  # [radians/meter]
         surface = ReconMethods.LeastSquare(xSlopes, ySlopes)
         return surface
 
-    def _shifts_to_tilts(self,shifts):
+    def _shifts_to_tilts(self, shifts):
         # Linear approximation
-        return shifts*self.angular_res
+        return shifts * self.angular_res
 
-    def _tilts_to_gradient(self,tilts):
+    def _tilts_to_gradient(self, tilts):
         """
         Converts tilts [radians] to gradient [radians/meter]
         Function is numpy-aware
@@ -99,7 +98,7 @@ class WideFieldSHWFS(object):
         """
         # numpy awareness
         if tilts.dtype == np.ndarray:
-            Vtan = np.vectorize(np.tan,otypes=[np.ndarray])
+            Vtan = np.vectorize(np.tan, otypes=[np.ndarray])
         else:
             Vtan = np.tan
 
@@ -127,7 +126,9 @@ class WideFieldSHWFS(object):
         if scrn.height > self.conjugated_height:
             meta_radius = radius + (scrn.height - self.conjugated_height) * np.tan(theta)
         else:
-            threshold_height = ((radius - self.tel.pupil_diameter/2.0)/np.tan(theta) + self.tel.pupil_diameter) /2.0
+            threshold_height = (
+                                   (radius - self.tel.pupil_diameter / 2.0) / np.tan(
+                                       theta) + self.tel.pupil_diameter) / 2.0
 
             if scrn.height > threshold_height:
                 meta_radius = radius + abs(self.conjugated_height - scrn.height) * np.tan(theta)
@@ -198,6 +199,7 @@ class WideFieldSHWFS(object):
 
         return all_shifts
 
+
 class SHWFSDemonstrator(object):
     """
     A static class containing methods to test, debug and demonstrate
@@ -217,32 +219,71 @@ class SHWFSDemonstrator(object):
       SHWFS_Demonstrator.compare_dmaps(wfs)
     """
 
-    @staticmethod
-    def display_dmap(wfs, lenslet_pos):
-        """
-        Inspect the dmap that would have been produced by a lenslet at particular conjugated position
+    """ Display Methods """
 
-        Science:
-         1) Observe a particular dmap
+    @staticmethod
+    def display_dmap(wfs, c_lenslet_pos):
+        """
         :param wfs:
-        :param lenslet_pos:
+        :param c_lenslet_pos:
         :return:
         """
 
-        dist_map = wfs.ImgSimulator.dmap(lenslet_pos)
+        dmap = wfs.ImgSimulator.dmap(c_lenslet_pos)
 
         plt.figure(1)
 
         ax1 = plt.subplot(121)
         ax1.set_title("X-Distortion")
-        plt.imshow(dist_map[0])
+        plt.imshow(dmap[0])
         plt.colorbar()
 
         ax2 = plt.subplot(122)
         ax2.set_title("Y-Distortion")
-        plt.imshow(dist_map[1])
+        plt.imshow(dmap[1])
         plt.colorbar()
 
+        plt.show()
+
+    @staticmethod
+    def display_all_dmap(wfs, axis=0):
+        """
+        Inspect the dmaps used by wfs.ImgSimulator to generate the dimgs
+
+        Science:
+         1) Observe variation in distortion maps with lenslet positions
+        :param wfs:
+        :param axis:
+        :return:
+        """
+        # sanity check
+        if axis != 0 and axis != 1:
+            raise ValueError("\nContext: Displaying all distortion maps\n" +
+                             "Problem: Choice of axes (x,y) invalid\n" +
+                             "Solution: Input 'axis' argument should be 0 (x-axis) or 1 (y-axis)")
+
+        all_dmaps = wfs.ImgSimulator.all_dmap()
+
+        # Find the min and max
+        smin = all_dmaps[0, 0][axis].min()
+        smax = all_dmaps[0, 0][axis].max()
+        for i in range(wfs.num_lenslet):
+            for j in range(wfs.num_lenslet):
+                if smin > all_dmaps[j, i][axis].min():
+                    smin = all_dmaps[j, i][axis].min()
+                if smax < all_dmaps[j, i][axis].max():
+                    smax = all_dmaps[j, i][axis].max()
+
+        # Display process
+        fig = plt.figure(1)
+        for i in range(wfs.num_lenslet):
+            for j in range(wfs.num_lenslet):
+                plt.subplot(wfs.num_lenslet, wfs.num_lenslet, i * wfs.num_lenslet + j + 1)
+                plt.axis('off')
+                im = plt.imshow(all_dmaps[j, i][axis], vmin=smin, vmax=smax)
+        fig.subplots_adjust(right=0.8)
+        cbar_ax = fig.add_axes([0.85, 0.15, 0.03, 0.7])
+        fig.colorbar(im, cax=cbar_ax)
         plt.show()
 
     @staticmethod
@@ -273,47 +314,6 @@ class SHWFSDemonstrator(object):
         plt.show()
 
     @staticmethod
-    def display_all_dmap(wfs, axis=0):
-        """
-        Inspect the dmaps used by wfs.ImgSimulator to generate the dimgs
-
-        Science:
-         1) Observe variation in distortion maps with lenslet positions
-        :param wfs:
-        :param axis:
-        :return:
-        """
-        # sanity check
-        if axis != 0 and axis != 1:
-            raise ValueError("\nContext: Displaying all distortion maps\n" +
-                             "Problem: Choice of axes (x,y) invalid\n" +
-                             "Solution: Input 'axis' argument should be 0 (x-axis) or 1 (y-axis)")
-
-        all_dmaps = wfs.ImgSimulator.all_dmap()
-
-        # Find the min and max
-        smin = all_dmaps[0,0][axis].min()
-        smax = all_dmaps[0,0][axis].max()
-        for i in range(wfs.num_lenslet):
-            for j in range(wfs.num_lenslet):
-                if smin > all_dmaps[j,i][axis].min():
-                    smin = all_dmaps[j,i][axis].min()
-                if smax < all_dmaps[j,i][axis].max():
-                    smax = all_dmaps[j,i][axis].max()
-
-        # Display process
-        fig = plt.figure(1)
-        for i in range(wfs.num_lenslet):
-            for j in range(wfs.num_lenslet):
-                plt.subplot(wfs.num_lenslet, wfs.num_lenslet, i * wfs.num_lenslet + j + 1)
-                plt.axis('off')
-                im = plt.imshow(all_dmaps[j, i][axis], vmin=smin, vmax=smax)
-        fig.subplots_adjust(right=0.8)
-        cbar_ax = fig.add_axes([0.85, 0.15, 0.03, 0.7])
-        fig.colorbar(im, cax=cbar_ax)
-        plt.show()
-
-    @staticmethod
     def display_all_dimg(wfs):
         """
         Inspect subimages produced on SH WHF's detector plane
@@ -338,47 +338,140 @@ class SHWFSDemonstrator(object):
         plt.show()
 
     @staticmethod
-    def actual_shifts_vs_measured_shifts(wfs):
+    def display_all_shifts(wfs):
+        """
+        Visualize the shifts
+        """
+        all_shifts = wfs.runWFS()
+
+        # Extract x and y components from nested ndarray
+        Vtake = np.vectorize(np.take)
+        xShifts = Vtake(all_shifts, [0], axis=0)  # [radians/meter]
+        yShifts = Vtake(all_shifts, [1], axis=0)  # [radians/meter]
+
+        fig1 = plt.figure(1)
+
+        ax1 = plt.subplot(1, 2, 1)
+        ax1.set_title("x shifts")
+        plt.imshow(xShifts, interpolation='None')
+
+        ax2 = plt.subplot(1, 2, 2)
+        ax2.set_title("y shifts")
+        plt.imshow(yShifts, interpolation='None')
+
+        # TODO: figure a way to display metascreen as well
+        # # plt.subplot(2,1,2)
+        # N = len(wfs.atmos.scrns)
+        # for i in range(N):
+        #     scrn = wfs.atmos.scrns[i]
+        #     ax = plt.subplot(1,N,i+1)
+        #     ax.set_title("MetaScreen" + str(i))
+        #     screen = wfs._get_metascreen(scrn)
+        #     plt.imshow(screen, interpolation='None')
+
+
+        plt.show()
+
+    """ How ImgSim Works Methods """
+
+    @staticmethod
+    def display_angles(wfs):
+        """
+        Every pixel in a WFS detector is associated with a viewing angle through the telescope
+        """
+        x = []
+        y = []
+        for j in range(wfs.pixels_lenslet):
+            for i in range(wfs.pixels_lenslet):
+                angle = wfs._pixel_to_angle(i, j)
+                x.append(angle[0])
+                y.append(angle[1])
+        plt.scatter(x, y)
+        plt.show()
+
+    @staticmethod
+    def display_vignette(wfs, c_lenslet_pos):
+        """
+        Visualize the vigenetting effect for a single lenslet
+        """
+
+        img = wfs.ImgSimulator._get_vignette_mask(c_lenslet_pos)
+
+        plt.imshow(img, cmap=plt.cm.gray)
+        plt.colorbar()
+        plt.show()
+
+    @staticmethod
+    def display_all_vignette(wfs):
+        """
+        Visualize the vignetting effect for all lenslets
+        """
+        plt.figure(1)
+        for j in range(wfs.num_lenslet):
+            for i in range(wfs.num_lenslet):
+                c_lenslet_pos = wfs.ImgSimulator._index_to_c_pos(i, j)
+                img = wfs.ImgSimulator._get_vignette_mask(c_lenslet_pos)
+                plt.subplot(wfs.num_lenslet, wfs.num_lenslet, i + j * wfs.num_lenslet + 1)
+                plt.axis('off')
+                plt.imshow(img, cmap=plt.cm.gray, vmin=0, vmax=1)
+        plt.show()
+
+    """ Evaluation """
+
+    @staticmethod
+    def actual_vs_measured_shifts(wfs):
+        """
+        Compare actual shift applied to image and measured shift
+        """
         all_dmaps = wfs.ImgSimulator.all_dmap()
         all_shifts = wfs.runWFS()
 
-        # TODO: All_shifts is still broken !!!
         # Display process
-        fig1 = plt.figure(1)
-        
-        # Find the min and max
-        # TODO: vectorize this operation
-        asmin = all_dmaps[0,0][0].min()
-        asmax = all_dmaps[0,0][0].max()
-        for i in range(wfs.num_lenslet):
-            for j in range(wfs.num_lenslet):
-                if asmin > all_dmaps[j,i][0].min():
-                    asmin = all_dmaps[j,i][0].min()
-                if asmax < all_dmaps[j,i][0].max():
-                    asmax = all_dmaps[j,i][0].max()
+        fig = plt.figure(1)
 
-        plt.subplot(1,2,1)
+        # Extract the x component of all dmaps
+        Vtake_ndarray = np.vectorize(np.take, otypes=[np.ndarray])
+        all_dmaps_x = Vtake_ndarray(all_dmaps, [0], axis=0)
+
+        # Find min and max distortion
+        Vmin = np.vectorize(np.min)
+        asmin = (Vmin(all_dmaps_x)).min()  # actual shift min
+        Vmax = np.vectorize(np.max)
+        asmax = (Vmax(all_dmaps_x)).max()  # actual shift max
+
+        # display loop
+        plt.subplot(1, 2, 1)
         for j in range(wfs.num_lenslet):
             for i in range(wfs.num_lenslet):
                 plt.subplot(wfs.num_lenslet, 2 * wfs.num_lenslet, j * 2 * wfs.num_lenslet + i + 1)
                 plt.axis('off')
-                plt.imshow(all_dmaps[j, i][0], vmin=asmin, vmax=asmax)
+                im = plt.imshow(all_dmaps_x[j, i], vmin=asmin, vmax=asmax)
+
+        # add all_dmap colorbar
+        cbar_ax = fig.add_axes([0.5, 0.15, 0.005, 0.7])
+        fig.colorbar(im, cax=cbar_ax)
+
+        # Extract x component of all_shifts
+        Vtake = np.vectorize(np.take)
+        all_shifts_x = Vtake(all_shifts, [0], axis=0)  # take the x component of the shift
 
         # Finding min and max of measured shifts
-        # msmin = all_shifts[0,:,:].min()
-        # msmax = all_shifts[0,:,:].max()
+        msmin = all_shifts_x.min() # measured shift min
+        msmax = all_shifts_x.max()
 
-        plt.subplot(1,2,2)
+        plt.subplot(1, 2, 2)
         plt.axis('off')
-        Vtake = np.vectorize(np.take)
-        im = Vtake(all_shifts,[0],axis=0) # take the x component of the shift
-        # plt.imshow(im, vmin=-1, vmax=1, interpolation='None')
-        plt.imshow(im, interpolation='None')
+
+        plt.imshow(all_shifts_x, vmin=msmin, vmax=msmax, interpolation='None')
+        plt.colorbar()
 
         plt.show()
 
     @staticmethod
-    def dmap_vs_measured_shift(wfs,c_pos):
+    def dmap_vs_measured_shift(wfs, c_pos):
+        """
+        Compare the mean applied shift and measured shift
+        """
         dmap = wfs.ImgSimulator.dmap(c_pos)
         dimg = wfs.ImgSimulator.dimg(c_pos)
         refImg = wfs.ImgInterpreter.get_ref_img()
@@ -386,7 +479,7 @@ class SHWFSDemonstrator(object):
         xglobal = dmap[0].mean()
         yglobal = dmap[1].mean()
 
-        print "Appied Shift = " + str((xglobal, yglobal))
+        print "Mean Appied Shift = " + str((xglobal, yglobal))
         print "Measured Shift = " + str(shift)
 
         plt.imshow(dmap[0])
@@ -395,8 +488,8 @@ class SHWFSDemonstrator(object):
     @staticmethod
     def dmap_vs_measured_shift2(wfs):
         shifts = wfs.runWFS()
-        shift = shifts[1,1]
-        dmap = wfs.ImgSimulator.dmap(wfs.ImgSimulator._index_to_c_pos(1,1))
+        shift = shifts[1, 1]
+        dmap = wfs.ImgSimulator.dmap(wfs.ImgSimulator._index_to_c_pos(1, 1))
         xglobal = dmap[0].mean()
         yglobal = dmap[1].mean()
 
@@ -420,7 +513,8 @@ class SHWFSDemonstrator(object):
 
         ax2 = plt.subplot(132)
         ax2.set_title("Immediate")
-        img = SHWFSDemonstrator.immediatecutslopeNrecon(screen,wfs.num_lenslet,wfs.tel.wavelength, wfs.conjugated_lenslet_size)
+        img = SHWFSDemonstrator.immediatecutslopeNrecon(screen, wfs.num_lenslet, wfs.tel.wavelength,
+                                                        wfs.conjugated_lenslet_size)
         im2 = ax2.imshow(img)
         plt.colorbar(im2)
 
@@ -462,7 +556,7 @@ class SHWFSDemonstrator(object):
 
         # Display process
         fig1 = plt.figure(1)
-        plt.subplot(1,2,1)
+        plt.subplot(1, 2, 1)
         plt.imshow(wfs._get_meta_pupil(wfs.atmos.scrns[0]))
 
         for j in range(wfs.num_lenslet):
@@ -474,67 +568,13 @@ class SHWFSDemonstrator(object):
         plt.show()
 
     @staticmethod
-    def display_slopes(wfs):
-        screen = wfs._get_metascreen(wfs.atmos.scrns[0])
-        distmap_all = wfs._all_dmap()
-        slopes = wfs._sense_slopes(distmap_all)
-        plt.figure(1)
-        plt.subplot(131)
-        plt.imshow(screen)
-        plt.subplot(132)
-        plt.imshow(slopes[0])
-        plt.colorbar()
-        plt.subplot(133)
-        plt.imshow(slopes[1])
-        plt.colorbar()
-        # plt.axis('off')
-        plt.show()
-
-    @staticmethod
-    def display_angles(wfs):
-        x = []
-        y = []
-        for j in range(wfs.pixels_lenslet):
-            for i in range(wfs.pixels_lenslet):
-                angle = wfs._pixel_to_angle(i, j)
-                x.append(angle[0])
-                y.append(angle[1])
-        plt.scatter(x, y)
-        plt.show()
-
-    @staticmethod
-    def display_vignette(wfs, c_lenslet_pos):
-        """
-        Demonstrates the vigenetting effect for a single lenslet
-        :param c_lenslet_pos:
-        :return:
-        """
-
-        img = wfs.ImgSimulator._get_vignette_mask(c_lenslet_pos)
-
-        plt.imshow(img, cmap=plt.cm.gray)
-        plt.colorbar()
-        plt.show()
-
-    @staticmethod
-    def display_all_vignette(wfs):
-        plt.figure(1)
-        for j in range(wfs.num_lenslet):
-            for i in range(wfs.num_lenslet):
-                c_lenslet_pos = wfs.ImgSimulator._index_to_c_pos(i, j)
-                img = wfs.ImgSimulator._get_vignette_mask(c_lenslet_pos)
-                plt.subplot(wfs.num_lenslet, wfs.num_lenslet, i + j * wfs.num_lenslet + 1)
-                plt.axis('off')
-                plt.imshow(img, cmap=plt.cm.gray, vmin=0, vmax=1)
-        plt.show()
-
-    @staticmethod
     def immediatecutslopeNrecon(phasescreen, num_lenslet, wavelength, conjugated_lenslet_size):
         num = phasescreen.shape[0] / num_lenslet
         slopes = np.empty((2, num_lenslet, num_lenslet))
         for j in range(num_lenslet):
             for i in range(num_lenslet):
-                oXSlope, oYSlope = _TiltifyMethods.tiltify1(phasescreen[j * num:(j + 1) * num, i * num:(i + 1) * num],wavelength,conjugated_lenslet_size)
+                oXSlope, oYSlope = _TiltifyMethods.tiltify1(phasescreen[j * num:(j + 1) * num, i * num:(i + 1) * num],
+                                                            wavelength, conjugated_lenslet_size)
                 slopes[0, j, i] = oXSlope
                 slopes[1, j, i] = oYSlope
 
@@ -555,5 +595,9 @@ class SHWFSDemonstrator(object):
 if __name__ == '__main__':
     tel = Telescope(2.5)
     at = Atmosphere()
-    at.create_default_screen(0,0.15)
+    at.create_default_screen(0, 0.15)
     wfs = WideFieldSHWFS(0, 16, 128, at, tel)
+    # SHWFSDemonstrator.display_all_shifts(wfs)
+
+    # SHWFSDemonstrator.display_metapupil_N_dmaps(wfs)
+    SHWFSDemonstrator.actual_vs_measured_shifts(wfs)
