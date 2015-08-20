@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 class ImageInterpreter(object):
     """
-    ImageInterpreter extract the slope iformation above each lenslet given their subimages
+    ImageInterpreter extract the slope/shift/tilt information above each lenslet given their subimages
 
     Algorithm:
      This version of ImageInterpreter implements corelation and interpolation algorithms found in
@@ -27,16 +27,19 @@ class ImageInterpreter(object):
         # this class is a downstream user of the dimg products
         # if there is any problems the user can contact the manufacturer of the dimg products
 
-    def _dmap_to_slope(self, distortion_map):
+    def _dmap_to_shift(self, distortion_map):
         """
-        Assumption: There is a common shift component to all pixels of a distortion map
-         This component comes from the phase screen that the lenslet is conjugated to.
-         Misconjugated screens should have an average shift contribution close to zero
-        :param distortion_map: (x,y) shift used to distort image. Matrix shape should be (2,N,N) # [meter ndarray]
+        Returns the image shift value--- the mean shift component of the dmap
+
+        Assumption:
+            There is a common shift component to all pixels of a distortion map
+            This component is most strongly contributed by the phase screen nearest to the conjugated lenslet
+            Misconjugated screens should statistically have an average shift contribution close to zero
+
+        :param distortion_map: (x,y) shift used to distort image.
+         Matrix shape should be (2,pixel_lenslet,pixel_lenslet) # [pixel ndarray]
         :return: slopes # [radian per mater]
         """
-        # TODO: manage the units
-
         assert distortion_map.shape[0] == 2
         return (distortion_map[0].mean(), distortion_map[1].mean())
 
@@ -44,15 +47,17 @@ class ImageInterpreter(object):
         """
         Generate the net WF slopes sensed by WFS. Each lenslet acts as one gradient (slope)
         sensor
-        :param d_map_array: 2D list of distortion maps # [meters ndarray list list]
+        :param d_map_array: 2D list of distortion maps # [pixel ndarray list list]
         :return: (x-slopes, y-slopes) # [radian/meter ndarray]
         """
+
+        #TODO: correct the data format
         (ySize, xSize) = d_map_array.shape
         slopes = np.zeros((2, ySize, xSize))
 
         for (j, line) in enumerate(d_map_array):
             for (i, dmap) in enumerate(line):
-                (x, y) = self._dmap_to_slope(dmap)
+                (x, y) = self._dmap_to_shift(dmap)
                 slopes[0, j, i] = x
                 slopes[1, j, i] = y
 
@@ -66,24 +71,6 @@ class ImageInterpreter(object):
         return self.average_measure(all_dimg)
         # return self.spiral_measure(all_dimg)
 
-    def compare_refImg(self, dimg, recon_dimg):
-        plt.figure(1)
-
-        ax1 = plt.subplot(1, 3, 1)
-        ax1.imshow(dimg)
-        ax1.set_title("dimg")
-
-        ax2 = plt.subplot(1, 3, 2)
-        ax2.imshow(recon_dimg)
-        ax2.set_title("recon_dimg")
-
-        ax3 = plt.subplot(1, 3, 3)
-        true_img = self.ImgSimulator.get_test_img()
-        ax3.imshow(true_img)
-        ax3.set_title("true_img")
-
-        plt.show()
-
     def _measure_dimg_shifts(self, dimg, refImg):
         """
         Measures image shift of a lenslet image
@@ -91,7 +78,10 @@ class ImageInterpreter(object):
         Template Algorithm:
             Using a correlation algorithm, try every integer shift from -16 to 16.
             Results are stored in a c_matrix
-            Index of min value in c_matrix is our
+            Index of min value in c_matrix is our measured shift
+            Crop c-matrix into a 3x3 s-matrix
+            Fit a conic surface to s-matrix.
+            Min of s-matrix is added to measured shift to give sub pixel accuracy
         :param dimg: lenslet image whose shift from refImg we are measuring
         :param refImg: reference image
         :return: x, y shift # [ndarray] [pixel]
@@ -109,13 +99,16 @@ class ImageInterpreter(object):
             shifts = np.array((xShift, yShift), 'float64')
         return shifts
 
-    def get_ref_img(self):
+    def get_recon_img(self, all_dimg=None):
         """
         Default method to recontruct reference image
         """
-
-        all_dimg = self.ImgSimulator.all_dimg()
-        ref = _RefImgRecon.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
+        if all_dimg==None:
+            if self.ImgSimulator.all_dimg_saved == None:
+                all_dimg = self.ImgSimulator.all_dimg()
+            else:
+                all_dimg = self.ImgSimulator.all_dimg_saved
+        ref = _RefImgMethods.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
         return ref
 
     def average_measure(self, all_dimg):
@@ -123,9 +116,14 @@ class ImageInterpreter(object):
         Measures image shift in all lenslet images.
         Uses average image from all lenslets as reference image
         """
-        ref = _RefImgRecon.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
+        # get reference image
+        ref = _RefImgMethods.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
+        # initialize output variable
+        all_shifts = np.empty(all_dimg.shape, np.ndarray)
+
         iMax, jMax = all_dimg.shape
-        all_shifts = np.empty((jMax, iMax), np.ndarray)
+
+        # measuring process
         for j in range(jMax):
             for i in range(iMax):
                 sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
@@ -142,62 +140,85 @@ class ImageInterpreter(object):
         Uses neighbouring lenslet image on "inner ring" as reference image
         Measure middle lenslet first and moves out in a spiral
         """
-        # Center Radiation Tracer
+        # Center lenslet --- the original reference image
         jCenter, iCenter = (all_dimg.shape[0] - 1) / 2, (all_dimg.shape[1] - 1) / 2
-
+        # Max number of rounds of spiral
         limit = all_dimg.shape[0] - jCenter - 1
+        # Initialize all_shifts
         all_shifts = np.empty(all_dimg.shape, np.ndarray)
-
+        # Intialize original reference image shifts
         all_shifts[jCenter, iCenter] = np.array((0., 0.))
 
+        # Running indices
         i = iCenter
         j = jCenter
 
+        # Spiralling process
         for layer in range(limit - 1):
-            # -1 because last loop brought outside for-loop
+            # -1 because last loop brought outside for loop
+
             # Down
             for plus in range(2 * layer + 1):
                 j += 1
                 sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
-                print ""
-                jpar, ipar = _RefImgRecon._get_parent_index_spiral(i, j, iCenter, jCenter)
+                # get refImg index
+                jpar, ipar = _RefImgMethods.get_parent_index_spiral(i, j, iCenter, jCenter)
+                # get refImg
                 ref = all_dimg[jpar, ipar]
+                # measure relative shift
                 (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
+                # accumulate shifts
                 xShift += all_shifts[jpar, ipar][0]
                 yShift += all_shifts[jpar, ipar][1]
+                # assign
                 all_shifts[j, i] = np.array((xShift, yShift))
+
             # Right
             for plus in range(2 * layer + 1):
                 i += 1
                 sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
-                print ""
-                jpar, ipar = _RefImgRecon._get_parent_index_spiral(i, j, iCenter, jCenter)
+                # get refImg index
+                jpar, ipar = _RefImgMethods.get_parent_index_spiral(i, j, iCenter, jCenter)
+                # get refImg
                 ref = all_dimg[jpar, ipar]
+                # measure relative shift
                 (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
+                # accumulate shifts
                 xShift += all_shifts[jpar, ipar][0]
                 yShift += all_shifts[jpar, ipar][1]
+                # assign
                 all_shifts[j, i] = np.array((xShift, yShift))
+
             # Up
             for minus in range(2 * layer + 2):
                 j -= 1
                 sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
-                print ""
-                jpar, ipar = _RefImgRecon._get_parent_index_spiral(i, j, iCenter, jCenter)
+                # get refImg index
+                jpar, ipar = _RefImgMethods.get_parent_index_spiral(i, j, iCenter, jCenter)
+                # get refImg
                 ref = all_dimg[jpar, ipar]
+                # measure relative shift
                 (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
+                # accumulate shifts
                 xShift += all_shifts[jpar, ipar][0]
                 yShift += all_shifts[jpar, ipar][1]
+                # assign
                 all_shifts[j, i] = np.array((xShift, yShift))
-                # Left
+
+            # Left
             for minus in range(2 * layer + 2):
                 i -= 1
                 sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
-                print ""
-                jpar, ipar = _RefImgRecon._get_parent_index_spiral(i, j, iCenter, jCenter)
+                # get refImg index
+                jpar, ipar = _RefImgMethods.get_parent_index_spiral(i, j, iCenter, jCenter)
+                # get refImg
                 ref = all_dimg[jpar, ipar]
+                # measure relative shift
                 (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
+                # accumulate shifts
                 xShift += all_shifts[jpar, ipar][0]
                 yShift += all_shifts[jpar, ipar][1]
+                # assign
                 all_shifts[j, i] = np.array((xShift, yShift))
 
         # FINAL LAYER
@@ -206,35 +227,47 @@ class ImageInterpreter(object):
         for plus in range(2 * limit - 1):
             j += 1
             sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
-            print ""
-            jpar, ipar = _RefImgRecon._get_parent_index_spiral(i, j, iCenter, jCenter)
+            # get refImg index
+            jpar, ipar = _RefImgMethods.get_parent_index_spiral(i, j, iCenter, jCenter)
+            # get refImg
             ref = all_dimg[jpar, ipar]
+            # measure relative shift
             (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
+            # accumulate shifts
             xShift += all_shifts[jpar, ipar][0]
             yShift += all_shifts[jpar, ipar][1]
+            # assign
             all_shifts[j, i] = np.array((xShift, yShift))
         # Right
         for plus in range(2 * limit - 1):
             i += 1
             sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
-            print ""
-            jpar, ipar = _RefImgRecon._get_parent_index_spiral(i, j, iCenter, jCenter)
+            # get refImg index
+            jpar, ipar = _RefImgMethods.get_parent_index_spiral(i, j, iCenter, jCenter)
+            # get refImg
             ref = all_dimg[jpar, ipar]
+            # measure relative shift
             (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
+            # accumulate shifts
             xShift += all_shifts[jpar, ipar][0]
             yShift += all_shifts[jpar, ipar][1]
+            # assign
             all_shifts[j, i] = np.array((xShift, yShift))
         # Up
         for minus in range(2 * limit - 1):
             # -1 because terminating
             j -= 1
             sys.stdout.write('\r' + "Now measuring dimg index " + str((j, i)))
-            print ""
-            jpar, ipar = _RefImgRecon._get_parent_index_spiral(i, j, iCenter, jCenter)
+            # get refImg index
+            jpar, ipar = _RefImgMethods.get_parent_index_spiral(i, j, iCenter, jCenter)
+            # get refImg
             ref = all_dimg[jpar, ipar]
+            # measure relative shift
             (xShift, yShift) = self._measure_dimg_shifts(all_dimg[j, i], ref)
+            # accumulate shifts
             xShift += all_shifts[jpar, ipar][0]
             yShift += all_shifts[jpar, ipar][1]
+            # assign
             all_shifts[j, i] = np.array((xShift, yShift))
 
         sys.stdout.write(" Done!\n")
@@ -242,15 +275,15 @@ class ImageInterpreter(object):
         return all_shifts
 
 
-class _RefImgRecon(object):
+class _RefImgMethods(object):
     """
-    Reconstruct Reference Image for use in slope interpreter
+    Methods related to generating reference images for shift measurements
     """
 
     @staticmethod
     def recon1(all_dimg, all_mask):
         """
-        Reconstruct Reference Image by averaging image from all lensets.
+        Reconstruct test image to use as reference image by averaging image from all lensets.
         Accounts for vignetting effect.
         :param all_dimg:
         :return:
@@ -272,7 +305,10 @@ class _RefImgRecon(object):
         return ave
 
     @staticmethod
-    def _get_parent_index_spiral(i, j, iCenter, jCenter):
+    def get_parent_index_spiral(i, j, iCenter, jCenter):
+        """
+        Given lenslet index, return index of neighbouring lenslet on inner ring of spiral
+        """
         xDist = i - iCenter
         yDist = j - jCenter
 
@@ -281,14 +317,14 @@ class _RefImgRecon(object):
 
         if abs(xDist) >= abs(yDist):
             if xDist > 0:
-                ipar = ipar - 1
+                ipar -= 1
             else:
-                ipar = ipar + 1
+                ipar += 1
         if abs(yDist) >= abs(xDist):
             if yDist > 0:
-                jpar = jpar - 1
+                jpar -= 1
             else:
-                jpar = jpar + 1
+                jpar += 1
 
         return jpar, ipar
 

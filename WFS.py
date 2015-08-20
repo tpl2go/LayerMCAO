@@ -526,6 +526,30 @@ class SHWFSDemonstrator(object):
         plt.show()
 
     @staticmethod
+    def compare_reconImg(wfs, c_pos=(0,0)):
+        """
+        Compare quality of reconstructed test image with degraded image and true test image
+        """
+        dimg = wfs.ImgSimulator.dimg(c_pos)
+        recon_img = wfs.ImgInterpreter.get_recon_img()
+        plt.figure(1)
+
+        ax1 = plt.subplot(1, 3, 1)
+        ax1.imshow(dimg)
+        ax1.set_title("dimg")
+
+        ax2 = plt.subplot(1, 3, 2)
+        ax2.imshow(recon_img)
+        ax2.set_title("recon_img")
+
+        ax3 = plt.subplot(1, 3, 3)
+        true_img = wfs.ImgSimulator.get_test_img()
+        ax3.imshow(true_img)
+        ax3.set_title("true_img")
+
+        plt.show()
+
+    @staticmethod
     def compare_recon_methods(wfs):
         screen = wfs._get_metascreen(wfs.atmos.scrns[0])
         all_dimg = wfs.ImgSimulator.all_dimg()

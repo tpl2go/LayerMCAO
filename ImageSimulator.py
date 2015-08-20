@@ -2,6 +2,7 @@ import numpy as np
 import sys
 import pickle
 from PIL import Image
+import matplotlib.pyplot as plt
 
 # [Software Design] I am resisting the implementation of an abstract ImageInterpreter / ImageSimulator class because
 # I do not want the contracts to be set in stone. This code is still highly developmental and fluid. And the fact
@@ -41,6 +42,9 @@ class ImageSimulator(object):
         # Eager initialization of theta map / conjugated position map
         self.theta_map = self._get_theta_map()
         self.c_pos_map = self._get_c_pos_map()
+
+        # Intialize saving variable
+        self.all_dimg_saved = None
 
     def _get_lensletscreen(self, scrn, angle, c_lenslet_pos):
         """
@@ -123,14 +127,7 @@ class ImageSimulator(object):
         :return: np.array((x_shift,y_shift)) in conjugate image plane # [meter]
         """
         # Tilt introduced by phase screen
-        # numpy awareness
-        ## TODO: think of a better method
-        # if stacked_phase.dtype == np.ndarray:
-        #     VTiltify = np.vectorize(_TiltifyMethods.tiltify1)
-        #     tilts = VTiltify(stacked_phase, self.tel.wavelength, self.wfs.conjugated_lenslet_size)
-        # else:
-        #     tilts = _TiltifyMethods.tiltify1(stacked_phase, self.tel.wavelength,
-        #                                                     self.wfs.conjugated_lenslet_size)
+        # Tiltify is numpy awareness
         tilts = _TiltifyMethods.tiltify1(stacked_phase, self.tel.wavelength,
                                                             self.wfs.conjugated_lenslet_size)
 
@@ -287,7 +284,7 @@ class ImageSimulator(object):
          different directions, see different parts
          of the screen and hence is shifted by different amounts
         :param c_lenslet_pos: (x,y) position of conjugated lenslet # [meter tuple]
-        :return: distortion map --- (x-shift matrix, y-shift matrix) # [meter ndarray]
+        :return: distortion map --- (x-shift matrix, y-shift matrix) # [pixel ndarray]
         """
         # Grab and stack sub screens for each pixel
         screens = self._stack_lensletscreen(self.theta_map,c_lenslet_pos)
@@ -299,7 +296,7 @@ class ImageSimulator(object):
     def all_dmap(self):
         """
         Generates the (x,y) shift for every pixel in lenslet image for all lenslets
-        :return: x-shifts y-shifts # [meters ndarray]
+        :return: x-shifts y-shifts # [pixel ndarray]
         """
         # Initialize output array
         output = np.empty((self.wfs.num_lenslet, self.wfs.num_lenslet), np.ndarray)
@@ -388,6 +385,9 @@ class ImageSimulator(object):
 
         sys.stdout.write(" Done!")
 
+        # save all_dimg
+        self.all_dimg_saved = output
+
         return output
 
     def save_all_dimg(self):
@@ -469,6 +469,7 @@ class _TiltifyMethods(object):
         # Method 1 - Mean end to end difference
         # Numpy aware
         ### I think this is the best speed performance I can do without using C extensions
+        ### TODO: experiment with Vtake
         if screen.dtype == np.ndarray:
             S = screen[0,0].shape[0]
             slope = np.empty((2,screen.shape[0],screen.shape[1]))
@@ -550,3 +551,116 @@ class _TiltifyMethods(object):
         oYSlope = cov.sum() / S
 
         return (oXSlope, oYSlope)
+
+class ImgSimDemonstrator(object):
+    def display_dmap(self,wfs, c_lenslet_pos):
+        """
+        :param wfs:
+        :param c_lenslet_pos:
+        :return:
+        """
+
+        dmap = wfs.ImgSimulator.dmap(c_lenslet_pos)
+
+        plt.figure(1)
+
+        ax1 = plt.subplot(121)
+        ax1.set_title("X-Distortion")
+        plt.imshow(dmap[0])
+        plt.colorbar()
+
+        ax2 = plt.subplot(122)
+        ax2.set_title("Y-Distortion")
+        plt.imshow(dmap[1])
+        plt.colorbar()
+
+        plt.show()
+
+    def display_all_dmap(self,wfs, axis=0):
+        """
+        Inspect the dmaps used by wfs.ImgSimulator to generate the dimgs
+
+        Science:
+         1) Observe variation in distortion maps with lenslet positions
+        :param wfs:
+        :param axis:
+        :return:
+        """
+        # sanity check
+        if axis != 0 and axis != 1:
+            raise ValueError("\nContext: Displaying all distortion maps\n" +
+                             "Problem: Choice of axes (x,y) invalid\n" +
+                             "Solution: Input 'axis' argument should be 0 (x-axis) or 1 (y-axis)")
+
+        all_dmaps = wfs.ImgSimulator.all_dmap()
+
+        # Find the min and max
+        smin = all_dmaps[0,0][axis].min()
+        smax = all_dmaps[0,0][axis].max()
+        for i in range(wfs.num_lenslet):
+            for j in range(wfs.num_lenslet):
+                if smin > all_dmaps[j,i][axis].min():
+                    smin = all_dmaps[j,i][axis].min()
+                if smax < all_dmaps[j,i][axis].max():
+                    smax = all_dmaps[j,i][axis].max()
+
+        # Display process
+        fig = plt.figure(1)
+        for i in range(wfs.num_lenslet):
+            for j in range(wfs.num_lenslet):
+                plt.subplot(wfs.num_lenslet, wfs.num_lenslet, i * wfs.num_lenslet + j + 1)
+                plt.axis('off')
+                im = plt.imshow(all_dmaps[j, i][axis], vmin=smin, vmax=smax)
+        fig.subplots_adjust(right=0.8)
+        cbar_ax = fig.add_axes([0.85, 0.15, 0.03, 0.7])
+        fig.colorbar(im, cax=cbar_ax)
+        plt.show()
+
+    def display_dimg(self,wfs, c_lenslet_pos):
+        """
+        Inspect the dimg that would have been produced by a lenslet at particular conjugated position
+
+        Science:
+         1) Observe a particular dimg
+        :param wfs:
+        :param c_lenslet_pos:
+        :return:
+        """
+
+        cropped_lena = wfs.ImgSimulator.get_test_img()
+        oimg = wfs.ImgSimulator.dimg(c_lenslet_pos)
+
+        plt.figure(1)
+
+        ax1 = plt.subplot(121)
+        ax1.set_title("True Image")
+        plt.imshow(cropped_lena, cmap=plt.cm.gray)
+
+        ax2 = plt.subplot(122)
+        ax2.set_title("Distorted Image")
+        plt.imshow(oimg, cmap=plt.cm.gray)
+
+        plt.show()
+
+    def display_all_dimg(self,wfs):
+        """
+        Inspect subimages produced on SH WHF's detector plane
+
+        Science:
+         1) Observe vignetting effect
+         2) Observe variation in distortions
+        :param wfs:
+        :return:
+        """
+        all_dimg = wfs.ImgSimulator.all_dimg()
+
+        # Display process
+        plt.figure(1)
+        # Iterate over lenslet index
+        for j in range(wfs.num_lenslet):
+            for i in range(wfs.num_lenslet):
+                plt.subplot(wfs.num_lenslet, wfs.num_lenslet, j * wfs.num_lenslet + i + 1)
+                plt.axis('off')
+                plt.imshow(all_dimg[j, i], cmap=plt.cm.gray, vmax=256, vmin=0)
+
+        plt.show()
