@@ -10,13 +10,6 @@ import scipy.io as sio
 
 
 class WideFieldSHWFS(object):
-    """
-    Usage:
-        Methods prefixed with "_" are internal functions for the inner workings of the WFS
-        Methods prefixed with "display" are for user interactions
-        Methods prefixed with "run" are used by external classes
-
-    """
 
     def __init__(self, height, num_lenslet, pixels_lenslet, atmosphere, telescope):
         """
@@ -85,9 +78,11 @@ class WideFieldSHWFS(object):
         """
         tilts = self._shifts_to_tilts(shifts)
         slopes = self._tilts_to_gradient(tilts)
+
+        # Extract xSlope and ySlope from nested ndarray
         Vtake = np.vectorize(np.take)
-        xSlopes = Vtake(slopes,[0],axis=0)
-        ySlopes = Vtake(slopes,[1],axis=0)
+        xSlopes = Vtake(slopes,[0],axis=0) # [radians/meter]
+        ySlopes = Vtake(slopes,[1],axis=0) # [radians/meter]
         surface = ReconMethods.LeastSquare(xSlopes, ySlopes)
         return surface
 
@@ -96,13 +91,25 @@ class WideFieldSHWFS(object):
         return shifts*self.angular_res
 
     def _tilts_to_gradient(self,tilts):
-        Vtan = np.vectorize(np.tan,otypes=[np.ndarray])
+        """
+        Converts tilts [radians] to gradient [radians/meter]
+        Function is numpy-aware
+        :param tilts: [radians]
+        :return: gradient [radians/meter]
+        """
+        # numpy awareness
+        if tilts.dtype == np.ndarray:
+            Vtan = np.vectorize(np.tan,otypes=[np.ndarray])
+        else:
+            Vtan = np.tan
+
         return Vtan(tilts)
 
     def _get_metascreen(self, scrn):
         """
-        Returns the portion of screen that has contributed information to the
-        WFS
+        Returns the portion of phase screen that WFS senses.
+
+        Differs from metapupil when WFS not the same size as metapupil
 
         Refer to diagram to understand this implementation
         :param scrn: the Screen object whose metascreen we are finding
@@ -112,15 +119,20 @@ class WideFieldSHWFS(object):
         # basis parameters
         FoV = self.tel.field_of_view
         theta = FoV / 2.0
-        radius = self.tel.pupil_diameter / 2.0
+        radius = self.conjugated_size / 2.0
 
         # find meta radius
+        # meta radius: half length of metascreen
+
         if scrn.height > self.conjugated_height:
             meta_radius = radius + (scrn.height - self.conjugated_height) * np.tan(theta)
-        elif scrn.height > self.conjugated_height / 2.0:
-            meta_radius = radius + (self.conjugated_height - scrn.height) * np.tan(theta)
         else:
-            meta_radius = radius + scrn.height * np.tan(theta)
+            threshold_height = ((radius - self.tel.pupil_diameter/2.0)/np.tan(theta) + self.tel.pupil_diameter) /2.0
+
+            if scrn.height > threshold_height:
+                meta_radius = radius + abs(self.conjugated_height - scrn.height) * np.tan(theta)
+            else:
+                meta_radius = radius + scrn.height * np.tan(theta)
 
         # convert to array indices
         x_mid = scrn.phase_screen.shape[0] / 2.0  # [index]
@@ -139,6 +151,12 @@ class WideFieldSHWFS(object):
         return scrn.phase_screen[y1:y2, x1:x2]
 
     def _get_meta_pupil(self, scrn):
+        """
+        Returns the portion of phase screen in field of view of telescope.
+
+        :param scrn: Screen object
+        :return: sub phase screen [ndarray] [radian]
+        """
         size_of_WFS = self.num_lenslet * self.pixels_lenslet * self.conjugated_delta
         num_scrn_pixels = size_of_WFS / scrn.delta
         shapeX, shapeY = scrn.phase_screen.shape
@@ -146,24 +164,35 @@ class WideFieldSHWFS(object):
 
         return scrn.phase_screen[x1:x1 + num_scrn_pixels, x1:x1 + num_scrn_pixels]
 
-    def set_size(self, mode=None, **kwargs):
+    def set_size(self, c_size):
         """
-        By default, the WFS is set to the size of the meta pupil.
-        Use keyword argument to change the size of the WFS
+        Sets size of WFS.
+        WFS is centered in metapupil
 
-        Available keywords:
-        cpixelsize, pixelsize,clensletsize,lensletsize,cwfssize
+        Context:
+            By default the WFS size is set to that of the metapupil
+        :param c_size: conjugated size of WFS
         """
-        pass
+        self.conjugated_size = c_size  # [meters]
+        self.conjugated_lenslet_size = self.conjugated_size / float(self.num_lenslet)  # [meters]
+        self.lenslet_size = self.conjugated_lenslet_size / float(self.tel.Mfactor)  # [meters]
+        self.conjugated_delta = self.conjugated_size / float(self.num_lenslet) / float(self.pixels_lenslet)  # [meters]
 
     def runWFS(self):
         """
-        This is the main method for other classes to interact with this WFS class.
-        Unlike display methods, this method always returns a value
-        :return:
+        Observes the atmosphere and sense the image shifts in all lenslets
+
+        Design:
+            The simulation of lenslet images and the deduction of image shift values from those images
+            are delegated to two classes --- ImageSimulator and Image Interpreter. The only information
+            passed between them should only be the lenslet images.
+
+            The use of template and strategy patterns
+            is intended to allow easy modifications to algorithms without disruption AO simulation setup.
+
+            This function is intended to be the main function from which other AO components read WFS outputs
         """
 
-        # This uses a hybrid template pattern, strategy pattern and delegation pattern :P
         all_dimg = self.ImgSimulator.all_dimg()
         all_shifts = self.ImgInterpreter.all_dimg_to_shifts(all_dimg)
 
