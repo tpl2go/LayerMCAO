@@ -416,6 +416,46 @@ class SHWFSDemonstrator(object):
                 plt.imshow(img, cmap=plt.cm.gray, vmin=0, vmax=1)
         plt.show()
 
+    @staticmethod
+    def display_reconImg(wfs, c_pos=(0, 0)):
+        """
+        Compare quality of reconstructed test image with degraded image and true test image
+        """
+
+        # Compute the stuff
+        dimg = wfs.ImgSimulator.dimg(c_pos)
+        recon_img = wfs.ImgInterpreter.get_recon_img()
+        true_img = wfs.ImgSimulator.get_test_img()
+
+        # compute the scores
+        from ImageInterpreter import _CorrelationAlgorithms
+        dimg_score = _CorrelationAlgorithms._SquaredDifferenceFunction(dimg, true_img, 0, 0)
+        reconImg_score = _CorrelationAlgorithms._SquaredDifferenceFunction(recon_img, true_img, 0, 0)
+        trueImg_score = _CorrelationAlgorithms._SquaredDifferenceFunction(true_img, true_img, 0, 0)
+
+        print "\n<<<CORRELATION SCORES>>>"
+
+        print "dimg: " + str(dimg_score)
+        print "reconImg: " + str(reconImg_score)
+        print "trueImg: " + str(trueImg_score)
+
+        # Display
+        plt.figure(1)
+
+        ax1 = plt.subplot(1, 3, 1)
+        ax1.imshow(dimg)
+        ax1.set_title("Distorted Image")
+
+        ax2 = plt.subplot(1, 3, 2)
+        ax2.imshow(recon_img)
+        ax2.set_title("Reconstructed Image")
+
+        ax3 = plt.subplot(1, 3, 3)
+        ax3.imshow(true_img)
+        ax3.set_title("True Image")
+
+        plt.show()
+
     """ Evaluation """
 
     @staticmethod
@@ -456,7 +496,7 @@ class SHWFSDemonstrator(object):
         all_shifts_x = Vtake(all_shifts, [0], axis=0)  # take the x component of the shift
 
         # Finding min and max of measured shifts
-        msmin = all_shifts_x.min() # measured shift min
+        msmin = all_shifts_x.min()  # measured shift min
         msmax = all_shifts_x.max()
 
         plt.subplot(1, 2, 2)
@@ -468,93 +508,20 @@ class SHWFSDemonstrator(object):
         plt.show()
 
     @staticmethod
-    def dmap_vs_measured_shift(wfs, c_pos):
+    def compare_measuremodes_surface(wfs):
         """
-        Compare the mean applied shift and measured shift
+        Compare the quality of slopes sensed using different measurement modes.
+        Visualise reconstructed surface
+        :param wfs:
+        :return:
         """
-        dmap = wfs.ImgSimulator.dmap(c_pos)
-        dimg = wfs.ImgSimulator.dimg(c_pos)
-        refImg = wfs.ImgInterpreter.get_ref_img()
-        shift = wfs.ImgInterpreter._measure_dimg_shifts(dimg, refImg)
-        xglobal = dmap[0].mean()
-        yglobal = dmap[1].mean()
-
-        print "Mean Appied Shift = " + str((xglobal, yglobal))
-        print "Measured Shift = " + str(shift)
-
-        plt.imshow(dmap[0])
-        plt.show()
-
-    @staticmethod
-    def dmap_vs_measured_shift2(wfs):
-        shifts = wfs.runWFS()
-        shift = shifts[1, 1]
-        dmap = wfs.ImgSimulator.dmap(wfs.ImgSimulator._index_to_c_pos(1, 1))
-        xglobal = dmap[0].mean()
-        yglobal = dmap[1].mean()
-
-        print "Appied Shift = " + str((xglobal, yglobal))
-        print "Measured Shift = " + str(shift)
-
-        plt.imshow(dmap[0])
-        plt.show()
-
-    @staticmethod
-    def display_recon_N_screen(wfs):  ### TODO: fix broken methods
-        slopes = wfs.runWFS()
-        screen = wfs._get_metascreen(wfs.atmos.scrns[0])
-        sensed = wfs._reconstruct_WF(slopes)
-        plt.figure(1)
-
-        ax1 = plt.subplot(131)
-        ax1.set_title("True phase scrn")
-        im1 = ax1.imshow(screen)
-        plt.colorbar(im1)
-
-        ax2 = plt.subplot(132)
-        ax2.set_title("Immediate")
-        img = SHWFSDemonstrator.immediatecutslopeNrecon(screen, wfs.num_lenslet, wfs.tel.wavelength,
-                                                        wfs.conjugated_lenslet_size)
-        im2 = ax2.imshow(img)
-        plt.colorbar(im2)
-
-        ax3 = plt.subplot(133)
-        ax3.set_title("Reconstructed")
-        im3 = ax3.imshow(sensed)
-        plt.colorbar(im3)
-
-        plt.show()
-
-    @staticmethod
-    def compare_reconImg(wfs, c_pos=(0,0)):
-        """
-        Compare quality of reconstructed test image with degraded image and true test image
-        """
-        dimg = wfs.ImgSimulator.dimg(c_pos)
-        recon_img = wfs.ImgInterpreter.get_recon_img()
-        plt.figure(1)
-
-        ax1 = plt.subplot(1, 3, 1)
-        ax1.imshow(dimg)
-        ax1.set_title("dimg")
-
-        ax2 = plt.subplot(1, 3, 2)
-        ax2.imshow(recon_img)
-        ax2.set_title("recon_img")
-
-        ax3 = plt.subplot(1, 3, 3)
-        true_img = wfs.ImgSimulator.get_test_img()
-        ax3.imshow(true_img)
-        ax3.set_title("true_img")
-
-        plt.show()
-
-    @staticmethod
-    def compare_recon_methods(wfs):
+        # Compute the stuff
         screen = wfs._get_metascreen(wfs.atmos.scrns[0])
         all_dimg = wfs.ImgSimulator.all_dimg()
-        slopes1 = wfs.ImgInterpreter.measure_all_shifts(all_dimg)
-        slopes2 = wfs.ImgInterpreter.chain_measure(all_dimg)
+        slopes1 = wfs.ImgInterpreter.average_all_measure(all_dimg)
+        slopes2 = wfs.ImgInterpreter.spiral_all_measure(all_dimg)
+
+        # Display
         plt.figure(1)
 
         ax1 = plt.subplot(131)
@@ -563,57 +530,141 @@ class SHWFSDemonstrator(object):
         plt.colorbar(im1)
 
         ax2 = plt.subplot(132)
-        ax2.set_title("Spatially averaged RefImg")
+        ax2.set_title("Average Mode: Averaged dimg as RefImg")
         im2 = ax2.imshow(wfs._reconstruct_WF(slopes1))
         plt.colorbar(im2)
 
         ax3 = plt.subplot(133)
-        ax3.set_title("Adjacent RefImg")
+        ax3.set_title("Spiral Mode: Adjacent dimg as RefImg")
         im3 = ax3.imshow(wfs._reconstruct_WF(slopes2))
         plt.colorbar(im3)
 
         plt.show()
 
     @staticmethod
-    def display_metapupil_N_dmaps(wfs):
+    def compare_measuremodes_dmap(wfs):
+        """
+        Compare the quality of slopes sensed using different measurement modes.
+        Visualise reconstructed surface
+        :param wfs:
+        :return:
+        """
+        # Compute the stuff
+        all_dmap = wfs.ImgSimulator.all_dmap()
+        all_dimg = wfs.ImgSimulator.all_dimg()
+        slopes1 = wfs.ImgInterpreter.average_all_measure(all_dimg)
+        slopes2 = wfs.ImgInterpreter.spiral_all_measure(all_dimg)
+        Vtake = np.vectorize(np.take)
+
+        # Display
+        plt.figure(1)
+        num = all_dmap.shape[0]
+        for j in range(num):
+            for i in range(num):
+                plt.subplot(num, num*3, 3*num*j+i+1)
+                # TODO: remove hardcoded min/max
+                plt.imshow(all_dmap[j,i][0],vmin = -16, vmax=16)
+                plt.axis('off')
+
+        ax2 = plt.subplot(132)
+        ax2.set_title("Average Mode: Averaged dimg as RefImg")
+        im2 = ax2.imshow(Vtake(slopes1,[0],axis=0),interpolation='None')
+        plt.colorbar(im2)
+
+        ax3 = plt.subplot(133)
+        ax3.set_title("Spiral Mode: Adjacent dimg as RefImg")
+        im3 = ax3.imshow(Vtake(slopes2,[0],axis=0),interpolation='None')
+        plt.colorbar(im3)
+
+        plt.show()
+
+    @staticmethod
+    def dmap_vs_measured_shift(wfs, i, j):
+        """
+        Compare the mean applied shift and measured shift
+        """
+        c_pos = wfs.ImgSimulator._index_to_c_pos(i, j)
+        dmap = wfs.ImgSimulator.dmap(c_pos)
+        all_dimg = wfs.ImgSimulator.all_dimg()
+        shift1 = wfs.ImgInterpreter.average_measure(i, j, all_dimg)
+        shift2 = wfs.ImgInterpreter.spiral_measure(i, j, all_dimg)
+        xglobal = dmap[0].mean()
+        yglobal = dmap[1].mean()
+
+        print "\n<<<SHIFT MEASUREMENT RESULTS>>>"
+        print "Mean Appied Shift = " + str((xglobal, yglobal))
+        print "Measured Shift (Averaged Mode) = " + str(shift1)
+        print "Measured Shift (Spiral Mode) = " + str(shift2)
+
+        plt.imshow(dmap[0])
+        plt.show()
+
+    @staticmethod
+    def display_runWFS_surface(wfs):
+        """
+        Compare the quality of default runWFS output with true phase screen and "Chop,slopify, and reconstruct"
+        :param wfs:
+        :return:
+        """
+        # 1) True phase screen
+        screen = wfs._get_metascreen(wfs.atmos.scrns[0])
+
+        # 2) Reconstructed from WFS output
+        slopes = wfs.runWFS()
+        sensed = wfs._reconstruct_WF(slopes)
+
+        # 3) Chop, slopify, and reconstruct
+        phasescreen = wfs.atmos.scrns[0]
+        num = phasescreen.shape[0] / wfs.num_lenslet
+        slopes = np.empty((2, wfs.num_lenslet, wfs.num_lenslet))
+        for j in range(wfs.num_lenslet):
+            for i in range(wfs.num_lenslet):
+                oXSlope, oYSlope = _TiltifyMethods.tiltify1(phasescreen[j * num:(j + 1) * num, i * num:(i + 1) * num],
+                                                            wfs.tel.wavelength, wfs.conjugated_lenslet_size)
+                slopes[0, j, i] = oXSlope
+                slopes[1, j, i] = oYSlope
+        img = ReconMethods.LeastSquare(slopes[0, :, :], slopes[1, :, :])
+
+        plt.figure(1)
+
+        ax1 = plt.subplot(131)
+        ax1.set_title("True phase screen")
+        im1 = ax1.imshow(screen)
+        plt.colorbar(im1)
+
+        ax2 = plt.subplot(132)
+        ax2.set_title("Reconstructed from WFS output")
+        im2 = ax2.imshow(sensed)
+        plt.colorbar(im2)
+
+        ax3 = plt.subplot(133)
+        ax3.set_title("Chop, slopify, and reconstruct")
+        im3 = ax3.imshow(img)
+        plt.colorbar(im3)
+
+        plt.show()
+
+    @staticmethod
+    def metascreen_vs_all_dmap(wfs):
+        """
+        Compare metascreen with all_dmap
+        :param wfs:
+        :return:
+        """
         all_dmaps = wfs.ImgSimulator.all_dmap()
 
         # Display process
         fig1 = plt.figure(1)
         plt.subplot(1, 2, 1)
-        plt.imshow(wfs._get_meta_pupil(wfs.atmos.scrns[0]))
+        plt.imshow(wfs._get_metascreen(wfs.atmos.scrns[0]))
 
         for j in range(wfs.num_lenslet):
             for i in range(wfs.num_lenslet):
                 plt.subplot(wfs.num_lenslet, 2 * wfs.num_lenslet, j * 2 * wfs.num_lenslet + i + 1 + wfs.num_lenslet)
                 plt.axis('off')
-                plt.imshow(all_dmaps[j, i][0], vmin=-10, vmax=10)
+                plt.imshow(all_dmaps[j, i][0])
 
         plt.show()
-
-    @staticmethod
-    def immediatecutslopeNrecon(phasescreen, num_lenslet, wavelength, conjugated_lenslet_size):
-        num = phasescreen.shape[0] / num_lenslet
-        slopes = np.empty((2, num_lenslet, num_lenslet))
-        for j in range(num_lenslet):
-            for i in range(num_lenslet):
-                oXSlope, oYSlope = _TiltifyMethods.tiltify1(phasescreen[j * num:(j + 1) * num, i * num:(i + 1) * num],
-                                                            wavelength, conjugated_lenslet_size)
-                slopes[0, j, i] = oXSlope
-                slopes[1, j, i] = oYSlope
-
-        return ReconMethods.LeastSquare(slopes[0], slopes[1])
-
-    @staticmethod
-    def immediate(phasescreen, N=16):
-        num = phasescreen.shape[0] / N
-        slopes = np.empty((2, N, N))
-        for j in range(N):
-            for i in range(N):
-                oXSlope, oYSlope = _TiltifyMethods.tiltify1(phasescreen[j * num:(j + 1) * num, i * num:(i + 1) * num])
-                slopes[0, j, i] = oXSlope
-                slopes[1, j, i] = oYSlope
-        return slopes
 
 
 if __name__ == '__main__':
@@ -621,7 +672,4 @@ if __name__ == '__main__':
     at = Atmosphere()
     at.create_default_screen(0, 0.15)
     wfs = WideFieldSHWFS(0, 16, 128, at, tel)
-    # SHWFSDemonstrator.display_all_shifts(wfs)
-
-    # SHWFSDemonstrator.display_metapupil_N_dmaps(wfs)
-    SHWFSDemonstrator.actual_vs_measured_shifts(wfs)
+    SHWFSDemonstrator.compare_measuremodes_dmap(wfs)

@@ -22,7 +22,7 @@ This project aims to
     - ndarray.shape = (num_lenslet, num_lenslet)
     - ndarray.dtype = ndarray
 
-3. dimg: distorted image \[pixel\]
+3. dimg: distorted image
 
 	- The image behind a SH lenslet as distorted by atmosphere
     - ndarray.shape = (pixel_lenslet, pixel_lenslet)
@@ -38,6 +38,10 @@ This project aims to
     - Shift: the number of pixels the point IMAGE is shifted by on detector plane \[pixel\]
     - Tilt: the overage angle the WAVEFRONT is tilted by the phase screens \[radians\]
     - Gradient: the average gradient over a portion of the PHASE SCREEN   \[radians/meter\]
+
+6. ReconImg / RefImg
+    - ReconImg: Reconstructed test image. Given many dimg, we try to reconstruct the original image without distortion.
+    - RefImg: Reference image. The image used as reference when trying to measure shift. Not necessarily need to be a ReconImg
 
 
 

@@ -4,6 +4,7 @@ import pickle
 from PIL import Image
 import matplotlib.pyplot as plt
 
+
 # [Software Design] I am resisting the implementation of an abstract ImageInterpreter / ImageSimulator class because
 # I do not want the contracts to be set in stone. This code is still highly developmental and fluid. And the fact
 # that it is written in python means that it is still a highly dynamic and rapidly evolving piece of code.
@@ -43,8 +44,9 @@ class ImageSimulator(object):
         self.theta_map = self._get_theta_map()
         self.c_pos_map = self._get_c_pos_map()
 
-        # Intialize saving variable
+        # Saving Points
         self.all_dimg_saved = None
+        self.all_dmap_saved = None
 
     def _get_lensletscreen(self, scrn, angle, c_lenslet_pos):
         """
@@ -72,24 +74,24 @@ class ImageSimulator(object):
         sizeX = int(self.wfs.pixels_lenslet / 2.0 * self.wfs.conjugated_delta / scrn.delta)  # [index]
         sizeY = int(self.wfs.pixels_lenslet / 2.0 * self.wfs.conjugated_delta / scrn.delta)  # [index]
 
-        Vint = np.frompyfunc(int,1,1)
+        Vint = np.frompyfunc(int, 1, 1)
         # frame to capture
         x1 = Vint(x_mid) - sizeX
         x2 = Vint(x_mid) + sizeX
         y1 = Vint(y_mid) - sizeY
         y2 = Vint(y_mid) + sizeY
 
-       # TODO: implement adaptive phase screen resize
+        # TODO: implement adaptive phase screen resize
 
         # grab a snapshot the size of a lenslet
         # TODO: find a nicer way to make slicing numpy aware
         if type(x1) == np.ndarray:
-            output = np.empty((self.wfs.pixels_lenslet,self.wfs.pixels_lenslet),np.ndarray)
+            output = np.empty((self.wfs.pixels_lenslet, self.wfs.pixels_lenslet), np.ndarray)
             for j in range(self.wfs.pixels_lenslet):
                 for i in range(self.wfs.pixels_lenslet):
-                    output[j,i] = scrn.phase_screen[y1[j,i]:y2[j,i],x1[j,i]:x2[j,i]]
+                    output[j, i] = scrn.phase_screen[y1[j, i]:y2[j, i], x1[j, i]:x2[j, i]]
         else:
-            output = scrn.phase_screen[y1:y2,x1:x2]
+            output = scrn.phase_screen[y1:y2, x1:x2]
 
         return output
 
@@ -129,7 +131,7 @@ class ImageSimulator(object):
         # Tilt introduced by phase screen
         # Tiltify is numpy awareness
         tilts = _TiltifyMethods.tiltify1(stacked_phase, self.tel.wavelength,
-                                                            self.wfs.conjugated_lenslet_size)
+                                         self.wfs.conjugated_lenslet_size)
 
         if angle == None:
             # Use small angle resolution
@@ -156,7 +158,9 @@ class ImageSimulator(object):
 
         # numpy aware
         if type(pos_x) == np.ndarray:
-            lenslet_pos = np.array((pos_x,pos_y))
+            lenslet_pos = np.array((pos_x, pos_y))
+
+            # TODO change data format to be more vectorize compatible
         else:
             lenslet_pos = (pos_x, pos_y)
 
@@ -249,14 +253,14 @@ class ImageSimulator(object):
 
         return mask
 
-    def _get_theta_map(self, SmallApprox = True):
+    def _get_theta_map(self, SmallApprox=True):
         """
         Generates a map of conjugated angles associated with each pixel in lenslet image
         :return: theta map # [radian ndarray]
         """
         bias = (self.wfs.pixels_lenslet - 1) / 2.0  # [index]
 
-        X, Y = np.meshgrid(np.arange(self.wfs.pixels_lenslet),np.arange(self.wfs.pixels_lenslet),indexing = 'xy')
+        X, Y = np.meshgrid(np.arange(self.wfs.pixels_lenslet), np.arange(self.wfs.pixels_lenslet), indexing='xy')
         X, Y = X - bias, Y - bias
 
         tan_x, tan_y = X * self.wfs.angular_res, Y * self.wfs.angular_res
@@ -267,12 +271,12 @@ class ImageSimulator(object):
         else:
             theta_x, theta_y = tan_x, tan_y
 
-        return np.array((theta_x,theta_y))
+        return np.array((theta_x, theta_y))
 
     def _get_c_pos_map(self):
-        X, Y = np.meshgrid(np.arange(self.wfs.num_lenslet),np.arange(self.wfs.num_lenslet),indexing = 'xy')
+        X, Y = np.meshgrid(np.arange(self.wfs.num_lenslet), np.arange(self.wfs.num_lenslet), indexing='xy')
         bias = (self.wfs.num_lenslet - 1) / 2.0  # [index]
-        c_pos_map = self._index_to_c_pos(X,Y)
+        c_pos_map = self._index_to_c_pos(X, Y)
 
         return c_pos_map
 
@@ -287,7 +291,7 @@ class ImageSimulator(object):
         :return: distortion map --- (x-shift matrix, y-shift matrix) # [pixel ndarray]
         """
         # Grab and stack sub screens for each pixel
-        screens = self._stack_lensletscreen(self.theta_map,c_lenslet_pos)
+        screens = self._stack_lensletscreen(self.theta_map, c_lenslet_pos)
         # convert sub screens to shifts
         shifts = self._screen_to_shifts(screens)
 
@@ -332,7 +336,7 @@ class ImageSimulator(object):
 
         # Distortion Process
 
-        shift = lambda (x, y): (x + int(x_distortion[x, y]), y + int(y_distortion[x, y]))
+        shift = lambda (x, y): (y + int(y_distortion[x, y]), x + int(x_distortion[x, y]),)
 
         invalid_count = 0
 
@@ -340,8 +344,9 @@ class ImageSimulator(object):
             for i in range(oimg.shape[1]):
                 try:
                     pos = shift((i, j))
-                    oimg[j, i] = self.test_img[x1 + pos[1], x1 + pos[0]]
+                    oimg[j, i] = self.test_img[x1 + pos[0], x1 + pos[1]]
                 except IndexError:
+                    oimg[j, i] = self.test_img[x1 + j, x1 + i]
                     invalid_count += 1
 
         # Vignetting Process
@@ -372,6 +377,7 @@ class ImageSimulator(object):
         Generates the distorted image for every lenslet in the WFS
         :return: image ndarray
         """
+        # TODO: test if all_dmap is computed already
         # Initialize output array
         output = np.empty((self.wfs.num_lenslet, self.wfs.num_lenslet), np.ndarray)
 
@@ -433,6 +439,7 @@ class ImageSimulator(object):
                 output[j, i] = self._get_vignette_mask(c_lenslet_pos)
         return output
 
+
 class _TestImgGenerator(object):
     @staticmethod
     def test_img1():
@@ -453,6 +460,7 @@ class _TestImgGenerator(object):
         # refer to Lofdahl's paper
         pass
 
+
 class _TiltifyMethods(object):
     """
     A collection of methods to fit x,y tilts in radians to a sub phase screen
@@ -471,18 +479,18 @@ class _TiltifyMethods(object):
         ### I think this is the best speed performance I can do without using C extensions
         ### TODO: experiment with Vtake
         if screen.dtype == np.ndarray:
-            S = screen[0,0].shape[0]
-            slope = np.empty((2,screen.shape[0],screen.shape[1]))
+            S = screen[0, 0].shape[0]
+            slope = np.empty((2, screen.shape[0], screen.shape[1]))
             for j in range(screen.shape[0]):
                 for i in range(screen.shape[1]):
-                    x_tilt_acc = (screen[j,i][:, S - 1] - screen[j,i][:, 0]).sum()
-                    y_tilt_acc = (screen[j,i][S - 1, :] - screen[j,i][0, :]).sum()
+                    x_tilt_acc = (screen[j, i][:, S - 1] - screen[j, i][:, 0]).sum()
+                    y_tilt_acc = (screen[j, i][S - 1, :] - screen[j, i][0, :]).sum()
 
                     oXTilt = x_tilt_acc * wavelength / (2 * np.pi * conjugated_lenslet_size)
                     oYTilt = y_tilt_acc * wavelength / (2 * np.pi * conjugated_lenslet_size)
 
-                    slope[0,j,i] = oXTilt
-                    slope[1,j,i] = oYTilt
+                    slope[0, j, i] = oXTilt
+                    slope[1, j, i] = oYTilt
         else:
             S = screen.shape[0]
 
@@ -552,8 +560,9 @@ class _TiltifyMethods(object):
 
         return (oXSlope, oYSlope)
 
+
 class ImgSimDemonstrator(object):
-    def display_dmap(self,wfs, c_lenslet_pos):
+    def display_dmap(self, wfs, c_lenslet_pos):
         """
         :param wfs:
         :param c_lenslet_pos:
@@ -576,7 +585,7 @@ class ImgSimDemonstrator(object):
 
         plt.show()
 
-    def display_all_dmap(self,wfs, axis=0):
+    def display_all_dmap(self, wfs, axis=0):
         """
         Inspect the dmaps used by wfs.ImgSimulator to generate the dimgs
 
@@ -595,14 +604,14 @@ class ImgSimDemonstrator(object):
         all_dmaps = wfs.ImgSimulator.all_dmap()
 
         # Find the min and max
-        smin = all_dmaps[0,0][axis].min()
-        smax = all_dmaps[0,0][axis].max()
+        smin = all_dmaps[0, 0][axis].min()
+        smax = all_dmaps[0, 0][axis].max()
         for i in range(wfs.num_lenslet):
             for j in range(wfs.num_lenslet):
-                if smin > all_dmaps[j,i][axis].min():
-                    smin = all_dmaps[j,i][axis].min()
-                if smax < all_dmaps[j,i][axis].max():
-                    smax = all_dmaps[j,i][axis].max()
+                if smin > all_dmaps[j, i][axis].min():
+                    smin = all_dmaps[j, i][axis].min()
+                if smax < all_dmaps[j, i][axis].max():
+                    smax = all_dmaps[j, i][axis].max()
 
         # Display process
         fig = plt.figure(1)
@@ -616,7 +625,7 @@ class ImgSimDemonstrator(object):
         fig.colorbar(im, cax=cbar_ax)
         plt.show()
 
-    def display_dimg(self,wfs, c_lenslet_pos):
+    def display_dimg(self, wfs, c_lenslet_pos):
         """
         Inspect the dimg that would have been produced by a lenslet at particular conjugated position
 
@@ -642,7 +651,7 @@ class ImgSimDemonstrator(object):
 
         plt.show()
 
-    def display_all_dimg(self,wfs):
+    def display_all_dimg(self, wfs):
         """
         Inspect subimages produced on SH WHF's detector plane
 

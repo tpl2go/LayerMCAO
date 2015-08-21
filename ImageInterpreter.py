@@ -38,38 +38,36 @@ class ImageInterpreter(object):
 
         :param distortion_map: (x,y) shift used to distort image.
          Matrix shape should be (2,pixel_lenslet,pixel_lenslet) # [pixel ndarray]
-        :return: slopes # [radian per mater]
+        :return: x,y slopes # [radian / mater ndarray]
         """
         assert distortion_map.shape[0] == 2
-        return (distortion_map[0].mean(), distortion_map[1].mean())
+        return np.array(distortion_map[0].mean(), distortion_map[1].mean())
 
-    def all_dmap_to_slopes(self, d_map_array):
+    def all_dmap_to_shifts(self, all_dmap):
         """
-        Generate the net WF slopes sensed by WFS. Each lenslet acts as one gradient (slope)
-        sensor
-        :param d_map_array: 2D list of distortion maps # [pixel ndarray list list]
+        Generate the image shift values for every lenslet in WFS
+        :param all_dmap: # [pixel ndarray ndarray]
         :return: (x-slopes, y-slopes) # [radian/meter ndarray]
         """
 
-        #TODO: correct the data format
-        (ySize, xSize) = d_map_array.shape
-        slopes = np.zeros((2, ySize, xSize))
+        # TODO: vectorize?
 
-        for (j, line) in enumerate(d_map_array):
-            for (i, dmap) in enumerate(line):
-                (x, y) = self._dmap_to_shift(dmap)
-                slopes[0, j, i] = x
-                slopes[1, j, i] = y
+        # Initialize output variable
+        output = np.empty(all_dmap.shape,dtype=np.ndarray)
 
-        return slopes
+        for j in range(all_dmap.shape[0]):
+            for i in range(all_dmap.shape[1]):
+                output[j,i] = self._dmap_to_shift(all_dmap[j,i])
+
+        return output
 
     def all_dimg_to_shifts(self, all_dimg):
         """
         standard function called by WFS
         :param all_dimg:
         """
-        return self.average_measure(all_dimg)
-        # return self.spiral_measure(all_dimg)
+        return self.average_all_measure(all_dimg)
+        # return self.spiral_all_measure(all_dimg)
 
     def _measure_dimg_shifts(self, dimg, refImg):
         """
@@ -111,11 +109,30 @@ class ImageInterpreter(object):
         ref = _RefImgMethods.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
         return ref
 
-    def average_measure(self, all_dimg):
+    def average_measure(self,i,j, all_dimg):
+        refImg = self.get_recon_img(all_dimg)
+        return self._measure_dimg_shifts(all_dimg[j,i], refImg)
+
+    def spiral_measure(self,i,j, all_dimg):
+        jCenter,iCenter = all_dimg.shape[0] / 2, all_dimg.shape[1] / 2
+
+        jpar,ipar = _RefImgMethods.get_parent_index_spiral(i,j,iCenter,jCenter)
+
+        chain = []
+
+        while ipar != iCenter and jpar != jCenter:
+            chain.append(self._measure_dimg_shifts(all_dimg[j,i],all_dimg[jpar,ipar]))
+            j, i = jpar, ipar
+            jpar,ipar = _RefImgMethods.get_parent_index_spiral(i,j,iCenter,jCenter)
+
+        return sum(chain)
+
+    def average_all_measure(self, all_dimg):
         """
         Measures image shift in all lenslet images.
         Uses average image from all lenslets as reference image
         """
+        print "\nInitiated average_all_measure"
         # get reference image
         ref = _RefImgMethods.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
         # initialize output variable
@@ -131,15 +148,16 @@ class ImageInterpreter(object):
                 all_shifts[j, i] = np.array((xShift, yShift))
 
         sys.stdout.write(" Done!\n")
-        print("Failure rate: ", MinOnEdgeError.count, "/", jMax * iMax)
+        print("Failure rate: ", MinOnEdgeError.get_failure(), "/", jMax * iMax)
         return all_shifts
 
-    def spiral_measure(self, all_dimg):
+    def spiral_all_measure(self, all_dimg):
         """
         Measures image shift in all lenslet images.
         Uses neighbouring lenslet image on "inner ring" as reference image
         Measure middle lenslet first and moves out in a spiral
         """
+        print "\nInitiated spiral_all_measure"
         # Center lenslet --- the original reference image
         jCenter, iCenter = (all_dimg.shape[0] - 1) / 2, (all_dimg.shape[1] - 1) / 2
         # Max number of rounds of spiral
