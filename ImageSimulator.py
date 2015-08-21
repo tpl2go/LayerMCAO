@@ -158,11 +158,14 @@ class ImageSimulator(object):
 
         # numpy aware
         if type(pos_x) == np.ndarray:
-            lenslet_pos = np.array((pos_x, pos_y))
+            # TODO: ugly hack
+            def combine(x,y):
+                return np.array((x,y))
+            Vcombine = np.vectorize(combine,otypes=[np.ndarray])
+            lenslet_pos = Vcombine(pos_x,pos_y)
 
-            # TODO change data format to be more vectorize compatible
         else:
-            lenslet_pos = (pos_x, pos_y)
+            lenslet_pos = np.array(pos_x, pos_y)
 
         return lenslet_pos
 
@@ -335,9 +338,7 @@ class ImageSimulator(object):
         oimg = np.zeros((self.wfs.pixels_lenslet, self.wfs.pixels_lenslet))
 
         # Distortion Process
-
         shift = lambda (x, y): (y + int(y_distortion[x, y]), x + int(x_distortion[x, y]),)
-
         invalid_count = 0
 
         for j in range(oimg.shape[0]):
@@ -377,19 +378,43 @@ class ImageSimulator(object):
         Generates the distorted image for every lenslet in the WFS
         :return: image ndarray
         """
-        # TODO: test if all_dmap is computed already
+
         # Initialize output array
         output = np.empty((self.wfs.num_lenslet, self.wfs.num_lenslet), np.ndarray)
 
-        # Convert
-        for j in range(self.wfs.num_lenslet):
-            for i in range(self.wfs.num_lenslet):
-                sys.stdout.write('\r' + "Now computing dimg index " + str((j, i)))
-                c_pos = self._index_to_c_pos(i, j)
-                dimg = self.dimg(c_pos)
-                output[j, i] = dimg
+        if self.all_dmap_saved == None:
 
-        sys.stdout.write(" Done!")
+            # Convert
+            for j in range(self.wfs.num_lenslet):
+                for i in range(self.wfs.num_lenslet):
+                    sys.stdout.write('\r' + "Now computing dimg index " + str((j, i)))
+                    c_pos = self._index_to_c_pos(i, j)
+                    dimg = self.dimg(c_pos)
+                    output[j, i] = dimg
+
+            sys.stdout.write(" Done!")
+        else:
+            #TODO
+            size = self.wfs.pixels_lenslet
+            for j in range(size):
+                for i in range(size):
+                    x_distortion = self.all_dmap_saved[j,i][0]
+                    y_distortion = self.all_dmap_saved[j,i][1]
+                    x1 = self.test_img.shape[0] / 2 - x_distortion.shape[0] / 2
+
+                    # Distortion Process
+                    shift = lambda (x, y): (y + int(y_distortion[x, y]), x + int(x_distortion[x, y]),)
+                    invalid_count = 0
+                    try:
+                        pos = shift((i, j))
+                        output[j, i] = self.test_img[x1 + pos[0], x1 + pos[1]]
+                    except IndexError:
+                        output[j, i] = self.test_img[x1 + j, x1 + i]
+                        invalid_count += 1
+
+                    # Vignetting Process
+                    mask = self._get_vignette_mask(c_lenslet_pos)
+                    output = output * mask
 
         # save all_dimg
         self.all_dimg_saved = output
