@@ -165,7 +165,7 @@ class ImageSimulator(object):
             lenslet_pos = Vcombine(pos_x,pos_y)
 
         else:
-            lenslet_pos = np.array(pos_x, pos_y)
+            lenslet_pos = np.array((pos_x, pos_y))
 
         return lenslet_pos
 
@@ -318,6 +318,9 @@ class ImageSimulator(object):
 
         sys.stdout.write(" Done!\n\n")
 
+        # Save output
+        self.all_dmap_saved = output
+
         return output
 
     def dimg(self, c_lenslet_pos):
@@ -396,25 +399,31 @@ class ImageSimulator(object):
         else:
             #TODO
             size = self.wfs.pixels_lenslet
-            for j in range(size):
-                for i in range(size):
-                    x_distortion = self.all_dmap_saved[j,i][0]
-                    y_distortion = self.all_dmap_saved[j,i][1]
-                    x1 = self.test_img.shape[0] / 2 - x_distortion.shape[0] / 2
+            def _dmap_to_dimg(dmap, c_lenslet_pos):
+                oimg = np.zeros((size,size))
 
-                    # Distortion Process
-                    shift = lambda (x, y): (y + int(y_distortion[x, y]), x + int(x_distortion[x, y]),)
-                    invalid_count = 0
-                    try:
-                        pos = shift((i, j))
-                        output[j, i] = self.test_img[x1 + pos[0], x1 + pos[1]]
-                    except IndexError:
-                        output[j, i] = self.test_img[x1 + j, x1 + i]
-                        invalid_count += 1
+                x_distortion = dmap[0]
+                y_distortion = dmap[1]
+                x1 = self.test_img.shape[0] / 2 - x_distortion.shape[0] / 2
+                for j in range(size):
+                    for i in range(size):
+                        # Distortion Process
+                        shift = lambda (x, y): (y + int(y_distortion[x, y]), x + int(x_distortion[x, y]),)
+                        invalid_count = 0
+                        try:
+                            pos = shift((i, j))
+                            oimg[j, i] = self.test_img[x1 + pos[0], x1 + pos[1]]
+                        except IndexError:
+                            oimg[j, i] = self.test_img[x1 + j, x1 + i]
+                            invalid_count += 1
 
-                    # Vignetting Process
-                    mask = self._get_vignette_mask(c_lenslet_pos)
-                    output = output * mask
+                # Vignetting Process
+                mask = self._get_vignette_mask(c_lenslet_pos)
+                oimg = oimg * mask
+
+                return oimg
+            V_dmap_to_dimg = np.vectorize(_dmap_to_dimg, otypes=[np.ndarray])
+            output = V_dmap_to_dimg(self.all_dmap_saved, self.c_pos_map)
 
         # save all_dimg
         self.all_dimg_saved = output
