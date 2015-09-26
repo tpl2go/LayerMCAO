@@ -27,6 +27,8 @@ class ImageInterpreter(object):
         # this class is a downstream user of the dimg products
         # if there is any problems the user can contact the manufacturer of the dimg products
 
+    ## Ultity functions
+
     def _dmap_to_shift(self, distortion_map):
         """
         Returns the image shift value--- the mean shift component of the dmap
@@ -42,6 +44,8 @@ class ImageInterpreter(object):
         """
         assert distortion_map.shape[0] == 2
         return np.array(distortion_map[0].mean(), distortion_map[1].mean())
+
+    ## Default calling points
 
     def all_dmap_to_shifts(self, all_dmap):
         """
@@ -68,6 +72,20 @@ class ImageInterpreter(object):
         """
         return self.average_all_measure(all_dimg)
         # return self.spiral_all_measure(all_dimg)
+
+    def get_recon_img(self, all_dimg=None):
+        """
+        Default reconstruction method to recontruct reference image from all_dimg
+        """
+        if all_dimg==None:
+            if self.ImgSimulator.all_dimg_saved == None:
+                all_dimg = self.ImgSimulator.all_dimg()
+            else:
+                all_dimg = self.ImgSimulator.all_dimg_saved
+        ref = _RefImgMethods.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
+        return ref
+
+    ## Template measurement algorithm
 
     def _measure_dimg_shifts(self, dimg, refImg):
         """
@@ -97,17 +115,7 @@ class ImageInterpreter(object):
             shifts = np.array((xShift, yShift), 'float64')
         return shifts
 
-    def get_recon_img(self, all_dimg=None):
-        """
-        Default method to recontruct reference image
-        """
-        if all_dimg==None:
-            if self.ImgSimulator.all_dimg_saved == None:
-                all_dimg = self.ImgSimulator.all_dimg()
-            else:
-                all_dimg = self.ImgSimulator.all_dimg_saved
-        ref = _RefImgMethods.recon1(all_dimg, self.ImgSimulator.all_vignette_mask())
-        return ref
+    ## Measurement modes: How to traverse the array of lenslet when measuring
 
     def average_measure(self,i,j, all_dimg):
         refImg = self.get_recon_img(all_dimg)

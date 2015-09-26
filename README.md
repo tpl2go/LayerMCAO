@@ -37,9 +37,8 @@ wfs = WideFieldSHWFS(0, 16, 128, at, tel)
 ```
 **Run simulation:**
 ```
-# This methods generates all the lenslet images (using ImageGenerator all\_dimg method)
-# and passes the result into ImageInterpretor's all\_dimg_to\_shifts method. 
-wfs.runWFS()
+# This method generates SH-WFS lenslet-images and interpretes global pixel shift in each image
+all_shifts = wfs.runWFS()
 ```
 
 ## Naming Conventions
@@ -67,14 +66,60 @@ wfs.runWFS()
     - ndarray.shape = (num_lenslet, num_lenslet)
     - ndarray.dtype = ndarray
 
-5. Shifts / Tilts / Gradient
-    - Shift: the number of pixels the point IMAGE is shifted by in detector plane \[pixel\]
-    - Tilt: the overage angle the WAVEFRONT is tilted by the phase screens \[radians\]
+5. shifts: \[pixel\]
+
+    - the overall 2D shift of a whole dimg 
+    - format: (xShift, yShift)
+    - type: pixel tuple
+
+6. all_shifts: all lenslets' interpreted shift value
+
+    - A collection of shift values
+    - ndarray.shape = (num_lenslet, num_lenslet)
+    - ndarray.dtype = ndarray (tuple)
+
+7. Shifts / Tilts / Gradient
+    - Shift: the number of pixels the whole IMAGE is shifted by in detector plane \[pixel\]
+    - Tilt: the average angle the WAVEFRONT is tilted by the phase screens \[radians\]
     - Gradient: the average gradient over a portion of the PHASE SCREEN   \[radians/meter\]
 
-6. ReconImg / RefImg
+8. ReconImg / RefImg
     - ReconImg: Reconstructed test image. Given many dimg, we try to reconstruct the original image without distortion. To be used as RefImg.
     - RefImg: Reference image as which image shift is measured.
+
+9. c\_lenslet\_pos \[meters\]
+    - position of conjugated lenslet
+    - format: (x,y)
+
+
+## Usage
+**Display dmaps / dimgs**
+
+More display methods in SHWFSDemonstrator class.
+```
+c_lenslet_pos = (0.2,0.5)
+dmap = wfs.ImgSimulator.dmap(c_lenslet_pos)
+SHWFSDemonstrator.display_dmap(dmap)
+```
+
+**Display the obscure values used in intermediate computations**
+
+More display methods in SHWFSDemonstrator class.
+```
+wfs = wfs = WideFieldSHWFS(0, 16, 128, at, tel)
+c_lenslet_pos = (0.2,0.5)
+SHWFSDemonstrator.display_vignette(wfs, c_lenslet_pos)
+```
+
+**Evaluate quality of distortion / reconstruction / measurement**
+
+More display methods in SHWFSDemonstrator class.
+```
+wfs = WideFieldSHWFS(0, 16, 128, at, tel)
+SHWFSDemonstrator.eval_all_shifts(wfs)
+```
+
+
 
 
 
