@@ -21,7 +21,7 @@ In ubuntu:
 ``` sudo apt-get install python-scipy python-matplotlib ```
 
 ## Getting Started
-
+Work from a fresh python script but in the same directory as the LayerMCAO files
 **Importing LayerMCAO classes:**
 ```
 from Telescope import Telescope
@@ -41,10 +41,9 @@ wfs = WideFieldSHWFS(0, 16, 128, at, tel)
 # interpretes global pixel shifts in each image
 all_shifts = wfs.runWFS()
 ```
-## Usage
+## Possible Usage
 **Display dmaps / dimgs**
 
-More display methods in SHWFSDemonstrator class.
 ```
 c_lenslet_pos = (0.2,0.5)
 dmap = wfs.ImgSimulator.dmap(c_lenslet_pos)
@@ -53,7 +52,6 @@ SHWFSDemonstrator.display_dmap(dmap)
 
 **Display the obscure values used in intermediate computations**
 
-More display methods in SHWFSDemonstrator class.
 ```
 wfs = wfs = WideFieldSHWFS(0, 16, 128, at, tel)
 c_lenslet_pos = (0.2,0.5)
@@ -62,11 +60,12 @@ SHWFSDemonstrator.display_vignette(wfs, c_lenslet_pos)
 
 **Evaluate quality of distortion / reconstruction / measurement**
 
-More display methods in SHWFSDemonstrator class.
 ```
 wfs = WideFieldSHWFS(0, 16, 128, at, tel)
 SHWFSDemonstrator.eval_all_shifts(wfs)
 ```
+
+Note: more display / evaluation methods can be found in SHWFSDemonstration class
 
 
 
