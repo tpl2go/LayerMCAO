@@ -21,24 +21,26 @@ In ubuntu:
 ``` sudo apt-get install python-scipy python-matplotlib ```
 
 ## Getting Started
-In a fresh python script type:
 
-1. Importing LayerMCAO objects
+**Importing LayerMCAO classes:**
 ```
 from Telescope import Telescope
 from Atmosphere import Atmosphere
 from WFS import WideFieldSHWFS
 ```
-2. Constructing LayerMCAO objects
+**Constructing LayerMCAO objects:**
 ```
 tel = Telescope(2.5)
 at = Atmosphere() 
 at.create_default_screen(0, 0.15) # screens can be done later
 wfs = WideFieldSHWFS(0, 16, 128, at, tel) 
 ```
-3. Run simulation
-```wfs.runWFS()```
-This methods generates all the lenslet images (using ImageGenerator all\_dimg method) and passes the result into ImageInterpretor's all\_dimg_to\_shifts method. 
+**Run simulation:**
+```
+# This methods generates all the lenslet images (using ImageGenerator all\_dimg method)
+# and passes the result into ImageInterpretor's all\_dimg_to\_shifts method. 
+wfs.runWFS()
+```
 
 ## Naming Conventions
 1. dmap: distortion map \[pixel\]
