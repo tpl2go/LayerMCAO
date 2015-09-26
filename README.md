@@ -29,7 +29,6 @@ from Telescope import Telescope
 from Atmosphere import Atmosphere
 from WFS import WideFieldSHWFS
 ```
-
 2. Constructing LayerMCAO objects
 ```
 tel = Telescope(2.5)
