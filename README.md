@@ -37,9 +37,38 @@ wfs = WideFieldSHWFS(0, 16, 128, at, tel)
 ```
 **Run simulation:**
 ```
-# This method generates SH-WFS lenslet-images and interpretes global pixel shift in each image
+# This method generates SH-WFS lenslet-images and 
+# interpretes global pixel shifts in each image
 all_shifts = wfs.runWFS()
 ```
+## Usage
+**Display dmaps / dimgs**
+
+More display methods in SHWFSDemonstrator class.
+```
+c_lenslet_pos = (0.2,0.5)
+dmap = wfs.ImgSimulator.dmap(c_lenslet_pos)
+SHWFSDemonstrator.display_dmap(dmap)
+```
+
+**Display the obscure values used in intermediate computations**
+
+More display methods in SHWFSDemonstrator class.
+```
+wfs = wfs = WideFieldSHWFS(0, 16, 128, at, tel)
+c_lenslet_pos = (0.2,0.5)
+SHWFSDemonstrator.display_vignette(wfs, c_lenslet_pos)
+```
+
+**Evaluate quality of distortion / reconstruction / measurement**
+
+More display methods in SHWFSDemonstrator class.
+```
+wfs = WideFieldSHWFS(0, 16, 128, at, tel)
+SHWFSDemonstrator.eval_all_shifts(wfs)
+```
+
+
 
 ## Naming Conventions
 1. dmap: distortion map \[pixel\]
@@ -90,34 +119,6 @@ all_shifts = wfs.runWFS()
 9. c\_lenslet\_pos \[meters\]
     - position of conjugated lenslet
     - format: (x,y)
-
-
-## Usage
-**Display dmaps / dimgs**
-
-More display methods in SHWFSDemonstrator class.
-```
-c_lenslet_pos = (0.2,0.5)
-dmap = wfs.ImgSimulator.dmap(c_lenslet_pos)
-SHWFSDemonstrator.display_dmap(dmap)
-```
-
-**Display the obscure values used in intermediate computations**
-
-More display methods in SHWFSDemonstrator class.
-```
-wfs = wfs = WideFieldSHWFS(0, 16, 128, at, tel)
-c_lenslet_pos = (0.2,0.5)
-SHWFSDemonstrator.display_vignette(wfs, c_lenslet_pos)
-```
-
-**Evaluate quality of distortion / reconstruction / measurement**
-
-More display methods in SHWFSDemonstrator class.
-```
-wfs = WideFieldSHWFS(0, 16, 128, at, tel)
-SHWFSDemonstrator.eval_all_shifts(wfs)
-```
 
 
 
