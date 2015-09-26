@@ -2,25 +2,44 @@
 
 LayerMCAO is a 2015 UROP project in the Cavendish Laboratory, Cambridge University supervised by Dr Aglae Kellerer. Its purpose is to simulate layer-oriented Multi Conjugate Adaptive Optics (MCAO).
 
-Layer-oriented MCAO is a new method of using MCAO. It differs from traditional star-oriented MCAO by optically conjugating not only the Deformable Mirror (DM) but the Wavefront Sensor (WFS) to height. By conjugating the WFS to height, we should be better able to sense the high altitude turbulence and thus correct for it. Because layer-oriented MCAO performs better with large field of view, this technique is ideal for solar astronomy.
+Layer-oriented MCAO is a new method of using MCAO. It differs from traditional star-oriented MCAO by optically conjugating not only the *Deformable Mirror* (DM) but the *Wavefront Sensor* (WFS) to height. Because the WFS is conjugated to height, ideally it should be able to sense high altitude turbulence without influence from the lower altitude turbulence. THe large field of view necessary on MCAO makes this technique ideal for solar astronomy.
 
-LayerMCAO is written in Python and currently implements three AO components: 1) Shack Hartmann Wavefront Sensor 2) Telescope 3) Atmosphere. Most of the work was done on the WFS, implementing the methods to generate and interpret the SH-WFS lenslet images. Telescope and Atmosphere objects largely contains the specifications and turbulence information needed by the lenslet image methods. 
+LayerMCAO is written in Python and currently implements three AO components: 1) Shack Hartmann Wavefront Sensor 2) Telescope 3) Atmosphere. Most of the work was done on the WFS, which contains the simulation methods to generate and interpret *lenslet images*. Telescope and Atmosphere objects largely contains the specifications and turbulence information needed by the simulation methods. 
 
-For the sake of modularity, the lenslet image generation methods and lenslet image interpretation methods are kept in two seperate objects and referenced by the SH-WFS object. The only exchange of information between the two classes should be the lenslet images. This keeps physical simulation of atmospheric seeing separate from post-processing methods. 
+Lenslet image generation and interpretation are kept as two seperate objects and referenced by the WFS object. The only information exchanged between the two classes should be the lenslet images. This keeps physical simulation of atmospheric seeing separate from post-processing methods. 
 
 Multiple methods for interpreting lenslet images are implemented and contained in the ImageInterpretor class. The ```all\_dimg\_to\_shifts``` method specifies the default method. At the moment, only one routine for generating lenslet images is implemented in the ImageGenerator class.
 
 ## Dependencies
-1. Numpy
+1. MATLAB
 2. Scipy
-3. Matlab
+3. Numpy
+4. Matplotlib
 
-## Usage
-1. ```wfs.runWFS()```
-This methods generates all the lenslet images (using ImageGenerator ```all\_dimg``` method) and passes the result into ImageInterpretor's ```all\_dimg_to\_shifts``` method. 
-2. Demonstration function
-Multiple functions for testing and debugging were written during the course of developing the code. These functions are contained in a static class WFSDemonstrator. Choose one function to run. The docstrings should be self-explanatory.
+In ubuntu:
 
+``` sudo apt-get install python-scipy python-matplotlib ```
+
+## Getting Started
+In a fresh python script type:
+
+1. Importing LayerMCAO objects
+```
+from Telescope import Telescope
+from Atmosphere import Atmosphere
+from WFS import WideFieldSHWFS
+```
+
+2. Constructing LayerMCAO objects
+```
+tel = Telescope(2.5)
+at = Atmosphere() 
+at.create_default_screen(0, 0.15) # screens can be done later
+wfs = WideFieldSHWFS(0, 16, 128, at, tel) 
+```
+3. Run simulation
+```wfs.runWFS()```
+This methods generates all the lenslet images (using ImageGenerator all\_dimg method) and passes the result into ImageInterpretor's all\_dimg_to\_shifts method. 
 
 ## Naming Conventions
 1. dmap: distortion map \[pixel\]
